@@ -40,10 +40,10 @@ class Decision:
             return f"{self. name} ∈ [{self.lower}, {self.upper}]"
 
     def set_upper(self, value):
-        self <= value
+        return self <= value
 
     def set_lower(self, value):
-        self >= value
+        return self >= value
 
     def __le__(self, value):
         if value < self.lower:
