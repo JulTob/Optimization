@@ -231,14 +231,7 @@ def integer_optima(OP):
     for values in itertools.product(*domains):
         assignment = dict(zip([x() for x in variables], values))
 
-        # Check constraints
-        feasible_flag = True
-        for r in OP.restrictions:
-            if not bool(r.subs(assignment)):
-                feasible_flag = False
-                break
-
-        if not feasible_flag:
+        if not feasible(OP, assignment):
             continue
 
         # Evaluate objective
