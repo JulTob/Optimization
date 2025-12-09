@@ -37,7 +37,7 @@ class Decision:
         if self.value is not None:
             return f"{self.name} ∈ [{self.lower}, {self.upper}] := {self.value}"
         else:
-            return f"{self. name} ∈ [{self.lower}, {self.upper}]"
+            return f"{self.name} ∈ [{self.lower}, {self.upper}]"
 
     def set_upper(self, value):
         return self <= value
