@@ -143,7 +143,7 @@ def analytical_optima(OP, steps=True):
     H = sym.hessian(f, xs)
 
     if steps:
-        print("\nGradiente & Hessiana:")
+        print("\nGradient & Hessian:")
         print(grad)
         print(H)
 
@@ -151,7 +151,7 @@ def analytical_optima(OP, steps=True):
     critical_points = sym.solve(grad, xs, dict=True)
 
     if steps:
-        print("\nPuntos críticos:")
+        print("\nCritical Points:")
         print(critical_points)
 
     candidates = []
@@ -163,10 +163,10 @@ def analytical_optima(OP, steps=True):
             kind = classify_point(H, cp)
             candidates.append((cp, fval, kind, "critical"))
             if steps:
-                print(f"\nCrítico factible: {cp}, f={fval}, tipo={kind}")
+                print(f"\nFeassible Point: {cp}, f={fval}, tipo={kind}")
         else:
             if steps:
-                print(f"\nCrítico NO factible: {cp}")
+                print(f"\nNON-Feasible Point: {cp}")
 
     vertices = enumerate_vertices(P)
 
@@ -175,7 +175,7 @@ def analytical_optima(OP, steps=True):
             fval = float(f.subs(v))
             candidates.append((v, fval, "vertex", "vertex"))
             if steps:
-                print(f"Vértice factible: {v}, f={fval}, tipo=vertex")
+                print(f"Feasible Vertex: {v}, f={fval}, tipo=vertex")
 
     # Select optimum
     if not candidates:
@@ -214,8 +214,8 @@ def integer_optima(OP):
 
         if x.numeric == "Integer" and high == np.inf:
             raise ValueError(
-                f"Dominio infinito no permitido para variable entera:  {x. name}.  "
-                "Debe establecer un límite superior finito para variables enteras."
+                f"Finite domain not set for:  {x.name}.  "
+                "Exhaustive search undefined behaviour. A definite bound must be set."
             )
 
         if x.numeric == "Integer": 
