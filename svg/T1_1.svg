@@ -1,0 +1,13 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="50,50 150,50 150,150 50,150" fill="none" stroke="black" />
+  <circle cx="50" cy="50" r="3" fill="red" />
+  <text x="50" y="45" font-size="12" text-anchor="middle">c₁</text>
+  <circle cx="150" cy="50" r="3" fill="red" />
+  <text x="150" y="45" font-size="12" text-anchor="middle">c₂</text>
+  <circle cx="100" cy="100" r="3" fill="blue" />
+  <text x="100" y="100" font-size="12" text-anchor="middle">c₃</text>
+  <line x1="50" y1="50" x2="100" y2="100" stroke="gray" stroke-dasharray="2,2" />
+  <line x1="150" y1="50" x2="100" y2="100" stroke="gray" stroke-dasharray="2,2" />
+  <line x1="100" y1="100" x2="150" y2="150" stroke="green" />
+  <text x="150" y="150" font-size="12" fill="green">d₂</text>
+</svg>
