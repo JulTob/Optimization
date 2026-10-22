@@ -33,8 +33,8 @@ def plot(P, resolution=200, palette=None, numeric="Real"):
 
     xs = P.symbols()
     d1, d2 = P.variables
-    xmin, xmax = 0, d1.upper
-    ymin, ymax = 0, d2.upper
+    xmin, xmax = d1.lower, d1.upper
+    ymin, ymax = d2.lower, d2.upper
 
     if d1.numeric == "Real":
         x_vals = np.linspace(xmin, xmax, resolution)
@@ -62,7 +62,13 @@ def plot(P, resolution=200, palette=None, numeric="Real"):
     for r in P.restrictions:
         g_num = sym.lambdify(xs, r.lhs - r.rhs, "numpy")
         G = g_num(X, Y)
-        masks.append(G <= 0)
+        rel_type = type(r).__name__
+        if "LessThan" in rel_type or "Le" in rel_type:
+            masks.append(G <= 0)
+        elif "GreaterThan" in rel_type or "Ge" in rel_type:
+            masks.append(G >= 0)
+        else:
+            raise ValueError("No valid restriction found: in rel_type {rel_type}")
 
     feasible_mask = np.ones_like(X, dtype=bool)
     for mask in masks:
@@ -71,12 +77,12 @@ def plot(P, resolution=200, palette=None, numeric="Real"):
     fig, ax = plt.subplots(figsize=(8, 8))
 
     colors_rgb = np.array([
-        [0.0, 1.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 1.0, 0.0],
-        [1.0, 0.0, 1.0],
-        [0.0, 1.0, 1.0],
+        [0, 1, 0], # RED
+        [1, 0, 0], # GREEN
+        [0, 0, 1], # BLUE
+        [1, 1, 0],
+        [1, 0, 1],
+        [0, 1, 1],
     ])
 
     colors_hsv = rgb_to_hsv(colors_rgb)
