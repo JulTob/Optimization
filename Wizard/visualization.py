@@ -216,7 +216,13 @@ def field(P, resolution=200, palette=None, numeric="Real"):
     for r in P.restrictions:
         g_num = sym.lambdify(xs, r.lhs - r.rhs, "numpy")
         G = g_num(X, Y)
-        masks.append(G <= 0)
+        rel_type = type(r).__name__
+        if "LessThan" in rel_type or "Le" in rel_type:
+            masks.append(G <= 0)
+        elif "GreaterThan" in rel_type or "Ge" in rel_type:
+            masks.append(G >= 0)
+        else:
+            masks.append(G == 0)
 
     feasible_mask = np.ones_like(X, dtype=bool)
     for mask in masks:
