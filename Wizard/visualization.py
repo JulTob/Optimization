@@ -160,7 +160,7 @@ def plot(P, resolution=200, palette=None, numeric="Real"):
     x_opt_all = X[opt_mask]
     y_opt_all = Y[opt_mask]
 
-    ax.set_title(f"{P.kind}:  ≈ f({x_opt:. 2f}, {y_opt:.2f}) = {f_opt:.2f}")
+    ax.set_title(f"{P.kind}:  ≈ f({x_opt:.2f}, {y_opt:.2f}) = {f_opt:.2f}")
     ax.set_xlabel(d1.name)
     ax.set_ylabel(d2.name)
     ax.set_xlim(xmin, xmax)
