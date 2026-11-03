@@ -90,8 +90,12 @@ def evaluate_objective(P, X, Y):
     f_num = sym.lambdify(xs, P.objective, "numpy")
     return f_num(X, Y)
 
+def set_atol(X,Y):
+    #-- For now...
+    return 1e-9
+    
 
-def compute_constraint_masks(P, X, Y):
+def compute_constraint_masks(Problem, X, Y, atol=None):
     """
     Compute boolean masks for each constraint.
     
@@ -99,7 +103,7 @@ def compute_constraint_masks(P, X, Y):
     
     Parameters
     ----------
-    P : Optimization
+    Problem : Optimization
         Optimization problem
     X : np.ndarray
         X-coordinate grid
@@ -111,12 +115,46 @@ def compute_constraint_masks(P, X, Y):
     list[np.ndarray]
         List of boolean masks, one per constraint
     """
+    if atol == None: 
+        atol= set_atol(X,Y)
     xs = P.symbols()
     masks = []
     for r in P.restrictions:
         g_num = sym.lambdify(xs, r.lhs - r.rhs, "numpy")
         G = g_num(X, Y)
         masks.append(G <= 0)
+    return masks
+
+def compute_constraint_masks(problem, X, Y, atol=1e-9):
+    """Evaluate each relational constraint on a 2D grid."""
+    symbols = problem.symbols()
+    masks = []
+
+    for relation in problem.restrictions:
+        expression = sym.lambdify(
+            symbols, relation.lhs - relation.rhs, "numpy"
+        )
+        values = np.broadcast_to(
+            np.asarray(expression(X, Y)), X.shape
+        )
+
+        if isinstance(relation, sym.StrictLessThan):
+            mask = values < 0
+        elif isinstance(relation, sym.LessThan):
+            mask = values <= 0
+        elif isinstance(relation, sym.StrictGreaterThan):
+            mask = values > 0
+        elif isinstance(relation, sym.GreaterThan):
+            mask = values >= 0
+        elif isinstance(relation, sym.Equality):
+            mask = np.isclose(values, 0, rtol=0, atol=atol)
+        else:
+            raise ValueError(
+                f"Unsupported constraint: {relation}"
+            )
+
+        masks.append(mask)
+
     return masks
 
 
@@ -171,7 +209,9 @@ def compute_constraint_background(X, masks):
         [1.0, 1.0, 0.0],  # Yellow
         [1.0, 0.0, 1.0],  # Magenta
         [0.0, 1.0, 1.0],  # Cyan
-    ])
+        ],
+        dtype=float)
+    
     colors_hsv = rgb_to_hsv(colors_rgb)
     
     shape = X.shape
