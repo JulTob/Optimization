@@ -13,7 +13,11 @@ from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
 
 def _check_grid(X, Y):
-    """Require two equally shaped two-dimensional coordinate arrays."""
+    """
+    Require two equally sized (shape two-dimensional coordinate arrays.
+
+    A shape means the same number of dimensions, and the same number of elements per dimension.
+    """
     X = np.asarray(X)
     Y = np.asarray(Y)
     if X.ndim != 2 or X.shape != Y.shape or X.size == 0:
