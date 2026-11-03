@@ -39,23 +39,73 @@ class Decision:
         else:
             return f"{self.name} ∈ [{self.lower}, {self.upper}]"
 
-    def set_upper(self, value):
-        return self <= value
+    def set_upper(variable, value):
+        """Narrow the variable domain; this is not a model constraint."""
+        if value < variable.lower:
+            raise ValueError(f"{variable.name} is unfeasible")
+        variable.upper = min(value, variable.upper)
+        return variable
 
-    def set_lower(self, value):
-        return self >= value
+    def set_lower(variable, value):
+        """Narrow the variable domain; this is not a model constraint."""
+        if value > variable.upper:
+            raise ValueError(f"{variable.name} is unfeasible")
+        variable.lower = max(value, variable.lower)
+        return variable
 
-    def __le__(self, value):
-        if value < self.lower:
-            raise ValueError(f"{self.name} is unfeasible")
-        self. upper = min(value, self.upper)
-        return self
+    def _sympy_(variable):
+        """Expose the underlying symbolic identity to SymPy."""
+        return variable.symbol
 
-    def __ge__(self, value):
-        if value > self.upper:
-            raise ValueError(f"{self.name} is unfeasible")
-        self.lower = max(value, self.lower)
-        return self
+    # Arithmetic yields SymPy expressions; Decision retains its own domain.
+    def __add__(variable, other):
+        return variable.symbol + sym.sympify(other)
+
+    def __radd__(variable, other):
+        return sym.sympify(other) + variable.symbol
+
+    def __sub__(variable, other):
+        return variable.symbol - sym.sympify(other)
+
+    def __rsub__(variable, other):
+        return sym.sympify(other) - variable.symbol
+
+    def __mul__(variable, other):
+        return variable.symbol * sym.sympify(other)
+
+    def __rmul__(variable, other):
+        return sym.sympify(other) * variable.symbol
+
+    def __truediv__(variable, other):
+        return variable.symbol / sym.sympify(other)
+
+    def __rtruediv__(variable, other):
+        return sym.sympify(other) / variable.symbol
+
+    def __pow__(variable, other):
+        return variable.symbol ** sym.sympify(other)
+
+    def __rpow__(variable, other):
+        return sym.sympify(other) ** variable.symbol
+
+    def __neg__(variable):
+        return -variable.symbol
+
+    def __pos__(variable):
+        return +variable.symbol
+
+    # Relational operators build constraints; they never mutate a domain.
+    def __le__(variable, other):
+        return sym.Le(variable.symbol, sym.sympify(other))
+
+    def __ge__(variable, other):
+        return sym.Ge(variable.symbol, sym.sympify(other))
+
+    def __lt__(variable, other):
+        return sym.Lt(variable.symbol, sym.sympify(other))
+
+    def __gt__(variable, other):
+        return sym.Gt(variable.symbol, sym.sympify(other))
 
     def domain(self):
         return (self.lower, self.upper)
@@ -119,8 +169,14 @@ class Optimization:
         self.set_minimize()
         return self
 
-    def add_restriction(self, restriction):
-        self.restrictions.append(restriction)
+    def add_restriction(problem, restriction):
+        """Record a symbolic relation; never mistake Python booleans for one."""
+        if not isinstance(restriction, sym.Rel):
+            raise TypeError(
+                "A constraint must be a SymPy relation (<=, >=, <, > or "
+                "sym.Eq); Python booleans and expressions are not constraints."
+            )
+        problem.restrictions.append(restriction)
 
     def __getitem__(self, restriction):
         self.add_restriction(restriction)
