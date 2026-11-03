@@ -402,7 +402,7 @@ def normalize_vector_field(GX, GY, base_len, size_factor):
         (U, V) - Scaled gradient components ready for quiver plot
     """
     norm = np.hypot(GX, GY)
-    norm[norm == 0] = 1. 0
+    norm[norm == 0] = 1.0
     
     U = GX / norm * base_len * size_factor
     V = GY / norm * base_len * size_factor
