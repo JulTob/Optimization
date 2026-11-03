@@ -28,8 +28,8 @@ def create_meshgrid(P, resolution=200):
     """
     xs = P.symbols()
     d1, d2 = P.variables
-    xmin, xmax = 0, d1.upper
-    ymin, ymax = 0, d2.upper
+    xmin, xmax = d1.lower, d1.upper
+    ymin, ymax = d2.lower, d2.upper
     
     x_vals = _get_coordinate_values(d1, xmin, xmax, resolution)
     y_vals = _get_coordinate_values(d2, ymin, ymax, resolution)
