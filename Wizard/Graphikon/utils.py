@@ -12,7 +12,7 @@ import sympy as sym
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
 
-def _check_grid(X, Y):
+def _check_grid_structure(X, Y):
     """
     Require two equally sized (shape two-dimensional coordinate arrays.
 
@@ -20,8 +20,15 @@ def _check_grid(X, Y):
     """
     X = np.asarray(X)
     Y = np.asarray(Y)
-    if X.ndim != 2 or X.shape != Y.shape or X.size == 0:
-        raise ValueError("X and Y must be non-empty 2D arrays of equal shape.")
+    assert X.ndim == 2, f"X must be 2D, got {X.ndim}D."
+    assert Y.ndim == 2, f"Y must be 2D, got {Y.ndim}D."
+
+    assert X.shape == Y.shape, (
+        f"Shape mismatch: X{X.shape} != Y{Y.shape}."
+    )
+
+    assert X.size > 0, "Coordinate arrays cannot be empty."
+
     return X, Y
 
 
@@ -70,7 +77,7 @@ def _get_coordinate_values(decision, lower, upper, resolution):
 
 def evaluate_objective(P, X, Y):
     """Return objective values with exactly the shape of the coordinate grid."""
-    X, Y = _check_grid(X, Y)
+    X, Y = _check_grid_structure(X, Y)
     if P.objective is None:
         raise ValueError("No objective function defined.")
     return _evaluate_expression(P.objective, P.symbols(), X, Y)
