@@ -9,22 +9,18 @@ Provides three main visualization types:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import hsv_to_rgb
 
-from .utils import (
-    create_meshgrid,
-    evaluate_objective,
-    compute_constraint_masks,
-    get_feasible_mask,
-    compute_constraint_background,
-    apply_feasible_coloring,
-    convert_hsv_to_rgb,
-    find_optimal_point,
-    compute_gradient_field,
-    normalize_vector_field,
-    compute_constraint_satisfaction_ratio,
+from .grid import create_meshgrid
+from .evaluation import (
+    evaluate_objective, compute_gradient_field, find_optimal_point
 )
-
+from .constraints import (
+    compute_constraint_masks, get_feasible_mask,
+    compute_constraint_satisfaction_ratio
+)
+from .coloring import (
+    compute_constraint_background, apply_feasible_coloring, convert_hsv_to_rgb
+)
 
 def plot(P, resolution=200, palette=None, numeric="Real"):
     """
@@ -332,4 +328,14 @@ def _mark_optimal_point(ax, X, Y, Z, feasible_mask, P):
     
     ax.set_title(
         f"{P.kind.capitalize()}: f({x_opt:.2f}, {y_opt:.2f}) = {opt_val:.2f}"
+    )
+
+
+def normalize_vector_field(GX, GY, base_len, size_factor):
+    """Normalize arrows while giving zero-gradient points zero arrows."""
+    norm = np.hypot(GX, GY)
+    safe_norm = np.where(norm == 0, 1.0, norm)
+    return (
+        GX / safe_norm * base_len * size_factor,
+        GY / safe_norm * base_len * size_factor,
     )
