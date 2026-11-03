@@ -10,8 +10,8 @@ from .optimization import (
     enumerate_vertices,
     classify_point
 )
-from .visualization import sunplot
-from .interactive import set_sliders
+
+from .interactive import sunplot, set_sliders
 
 __all__ = [
     # Core classes
