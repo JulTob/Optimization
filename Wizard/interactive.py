@@ -111,7 +111,7 @@ def set_sliders(P, max=10.0, step=0.1, initial=0.0):
             step = 1
         sliders[str(v.symbol)] = widgets.FloatSlider(
             value=initial,
-            min=0. 0,
+            min=0.0,
             max=max,
             step=step,
             description=str(v.symbol),
