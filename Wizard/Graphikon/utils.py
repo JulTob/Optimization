@@ -14,9 +14,10 @@ from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
 def _check_grid_structure(X, Y):
     """
-    Require two equally sized (shape two-dimensional coordinate arrays.
-
-    A shape means the same number of dimensions, and the same number of elements per dimension.
+    Validate coordinate grids X and Y.
+    
+    Both must be non-empty 2D arrays with identical shapes.
+    Each X[i, j], Y[i, j] pair identifies one point.
     """
     X = np.asarray(X)
     Y = np.asarray(Y)
