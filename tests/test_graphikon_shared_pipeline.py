@@ -59,15 +59,12 @@ class SharedPlotPipelineTests(unittest.TestCase):
                     for item in ax.collections
                 )
                 case.assertEqual(quiver_count, expected_quiver)
-                # Contour rendering creates contour-related LineCollections;
-                # ensure it appears only in the contour variant.
-                line_collection_count = sum(
-                    isinstance(item, matplotlib.collections.LineCollection)
+                # Matplotlib 3.9+ places QuadContourSet in Axes.collections.
+                contour_count = sum(
+                    isinstance(item, matplotlib.contour.QuadContourSet)
                     for item in ax.collections
                 )
-                case.assertEqual(
-                    line_collection_count > 0, bool(expected_contour)
-                )
+                case.assertEqual(contour_count, expected_contour)
                 case.assertIn("Min: f(", ax.get_title())
                 case.assertEqual(ax.get_xlabel(), "x")
                 case.assertEqual(ax.get_ylabel(), "y")
