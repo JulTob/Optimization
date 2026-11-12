@@ -1,0 +1,41 @@
+"""El 3×3: tres estructuras × tres modelos, ordenados por error de predicción.
+
+Si el modelo con la estructura correcta gana (la diagonal), el ranking
+diagnostica cómo se combinan las variables. Además, los ángulos de
+Tangentes dicen cuál es la estructura aunque no se conozca.
+"""
+import numpy as np
+import pandas as pd
+from .estructuras import ESTRUCTURAS, muestra_2d
+from .modelos_2d import ajustar_diana, ajustar_tangentes, ajustar_zigurat
+
+MODELOS = {
+    "Zigurat": ajustar_zigurat,
+    "Diana": ajustar_diana,
+    "Tangentes": ajustar_tangentes,
+    }
+EQUIVALENTE = {"aditiva": "Zigurat", "radial": "Diana", "direccional": "Tangentes"}
+
+
+def una_repeticion(verdad, semilla, n=150, sigma=0.1, n_prueba=3000):
+    X, y = muestra_2d(verdad, n, sigma, semilla)
+    X_prueba, y_prueba = muestra_2d(verdad, n_prueba, sigma, 10_000 + semilla)
+    errores, angulos = {}, None
+    for nombre, ajustar in MODELOS.items():
+        modelo = ajustar(X, y)
+        errores[nombre] = np.mean((y_prueba - modelo.predecir(X_prueba)) ** 2)
+        if nombre == "Tangentes":
+            angulos = modelo.angulos_grados()
+    return errores, angulos
+
+
+def ejecutar(repeticiones=10, **opciones):
+    """Devuelve (error medio, victorias por modelo, ángulos de Tangentes)."""
+    medias, victorias, angulos = {}, {}, {}
+    for estructura, verdad in ESTRUCTURAS.items():
+        resultados = [una_repeticion(verdad, s, **opciones) for s in range(repeticiones)]
+        tabla = pd.DataFrame([errores for errores, _ in resultados])
+        medias[estructura] = tabla.mean()
+        victorias[estructura] = tabla.idxmin(axis=1).value_counts().reindex(MODELOS, fill_value=0)
+        angulos[estructura] = [a for _, a in resultados]
+    return pd.DataFrame(medias).T, pd.DataFrame(victorias).T, angulos
