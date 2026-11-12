@@ -8,5 +8,6 @@
     modelos_2d  Zigurat, Diana y Tangentes.
     estructuras Datos con estructura conocida (verdad de partida).
     experimento El 3×3: ¿gana el modelo de la estructura real?
+    diagnostico Tres modelos → ranking por predicción → lectura de la estructura.
     graficos    Dibujo con matplotlib.            (capa más alta)
 """

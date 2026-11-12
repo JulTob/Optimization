@@ -30,3 +30,60 @@ def dibujar_mapas_2d(X, y, modelos, verdad=None):
         eje.set(title=nombre, xlabel="x1")
     figura.colorbar(relleno, ax=ejes)
     return figura
+
+
+def dibujar_diagnostico(diagnostico, X, y, verdad=None, resolucion=80):
+    """El original (verdad o datos) y los tres modelos, en las unidades de los datos.
+
+    Cada panel lleva su error de predicción; el ganador, una ★.
+    En Tangentes se dibujan las direcciones relevantes, con su aporte.
+    """
+    escala = diagnostico.modelos["Zigurat"].escala
+    lado = np.linspace(0, 1, resolucion)
+    A, B = np.meshgrid(lado, lado)
+    unitarios = np.column_stack([A.ravel(), B.ravel()])
+    puntos = escala.minimo + escala.rango * unitarios
+    U = puntos[:, 0].reshape(A.shape)
+    V = puntos[:, 1].reshape(A.shape)
+
+    superficies = {"Verdad" if verdad else "Datos": verdad(puntos) if verdad else None}
+    for nombre in diagnostico.orden():
+        superficies[nombre] = diagnostico.modelos[nombre].predecir(puntos)
+    niveles = np.linspace(min(np.min(y), *(np.min(z) for z in superficies.values() if z is not None)),
+                          max(np.max(y), *(np.max(z) for z in superficies.values() if z is not None)), 13)
+
+    figura, ejes = plt.subplots(1, 4, figsize=(17, 4), sharey=True, constrained_layout=True)
+    for eje, (nombre, valores) in zip(ejes, superficies.items()):
+        if valores is None:
+            relleno = eje.scatter(X[:, 0], X[:, 1], c=y, vmin=niveles[0], vmax=niveles[-1], s=14)
+            eje.set_title("Datos originales")
+        else:
+            relleno = eje.contourf(U, V, valores.reshape(A.shape), levels=niveles)
+            eje.scatter(X[:, 0], X[:, 1], c="white", s=4, alpha=0.5)
+            eje.set_title(_titulo(nombre, diagnostico))
+        eje.set_xlabel("x1")
+    ejes[0].set_ylabel("x2")
+    _dibujar_direcciones(ejes[list(superficies).index("Tangentes")], diagnostico, escala)
+    figura.colorbar(relleno, ax=ejes, shrink=0.85)
+    figura.suptitle(diagnostico.lectura(), fontsize=9, wrap=True)
+    return figura
+
+
+def _titulo(nombre, diagnostico):
+    if nombre not in diagnostico.errores:
+        return "Verdad (función original)"
+    marca = " ★" if nombre == diagnostico.ganador() else ""
+    return f"{nombre}{marca} · ECM {diagnostico.errores[nombre]:.4f}"
+
+
+def _dibujar_direcciones(eje, diagnostico, escala):
+    """Flechas desde el mínimo de los datos, con longitud proporcional al aporte."""
+    for grados, aporte in diagnostico.direcciones:
+        n = np.array([np.cos(np.radians(grados)), np.sin(np.radians(grados))])
+        fin = escala.minimo + escala.rango * (0.9 * aporte * n)
+        eje.annotate(
+                "",
+                xy=fin, xytext=escala.minimo,
+                arrowprops={"arrowstyle": "->", "color": "red", "lw": 2},
+                )
+        eje.text(*fin, f" {grados:.0f}° ({aporte:.0%})", color="red", fontsize=8)

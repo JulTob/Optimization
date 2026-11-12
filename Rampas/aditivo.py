@@ -43,6 +43,10 @@ class Componente:
     def __call__(self, X):
         return evaluar_nudos(self.nudos, self.proyeccion(X))
 
+    def amplitud(self):
+        """Cuánto sube esta componente de punta a punta: su peso en el modelo."""
+        return float(self.nudos.niveles[-1] - self.nudos.niveles[0])
+
 
 def ajustar_componente(proyeccion, X, residuo):
     return Componente(proyeccion, ajustar_isotonica(proyeccion(X), residuo))
