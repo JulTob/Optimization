@@ -1,6 +1,6 @@
 """Rampas saturadas e isotónica: un paquete, una idea por módulo.
 
-    senales     La pieza: ρ y las rampas.            (capa más baja)
+    senales     La pieza: r(t) y R_{a,b}(x).         (capa más baja)
     isotonica   Regresión isotónica (PAVA) y su paso a rampas.
     rampas_1d   Ajustes con rampas en una variable.
     dominio     Datos al cuadrante positivo [0,1]².

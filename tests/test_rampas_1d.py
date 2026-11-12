@@ -7,7 +7,7 @@ from scipy.optimize import lsq_linear
 
 from Rampas.isotonica import a_rampas, ajustar_isotonica, evaluar_nudos
 from Rampas.rampas_1d import rampas_con_nudo_en_cada_dato
-from Rampas.senales import rho
+from Rampas.senales import rampa_unitaria
 
 
 def muestra():
@@ -63,16 +63,16 @@ class RampasContienenALaIsotonicaTests(unittest.TestCase):
         np.testing.assert_allclose(ajuste(malla), evaluar_nudos(nudos, malla), atol=1e-8)
 
     def test_telescopica_exacta_en_racionales(case):
-        #-- v0 + Σ (v_j − v_{j−1})·ρ((x − t_{j−1})/(t_j − t_{j−1})), sin error de redondeo.
+        #-- v0 + Σ (v_j − v_{j−1})·r((x − t_{j−1})/(t_j − t_{j−1})), sin error de redondeo.
         t = [Fraction(1), Fraction(3), Fraction(4), Fraction(8)]
         v = [Fraction(0), Fraction(1, 2), Fraction(2), Fraction(5)]
 
-        def rho_exacta(s):
+        def rampa_unitaria_exacta(s):
             return min(max(s, Fraction(0)), Fraction(1))
 
         def suma(x):
             return v[0] + sum(
-                (v[j] - v[j - 1]) * rho_exacta((x - t[j - 1]) / (t[j] - t[j - 1]))
+                (v[j] - v[j - 1]) * rampa_unitaria_exacta((x - t[j - 1]) / (t[j] - t[j - 1]))
                 for j in range(1, len(t))
                 )
 
@@ -86,8 +86,8 @@ class RampasContienenALaIsotonicaTests(unittest.TestCase):
         case.assertEqual(suma(Fraction(-5)), v[0])
         case.assertEqual(suma(Fraction(100)), v[-1])
 
-    def test_rho_a_trozos(case):
-        np.testing.assert_allclose(rho(np.array([-1.0, 0.0, 0.3, 1.0, 2.0])), [0, 0, 0.3, 1, 1])
+    def test_rampa_unitaria_a_trozos(case):
+        np.testing.assert_allclose(rampa_unitaria(np.array([-1.0, 0.0, 0.3, 1.0, 2.0])), [0, 0, 0.3, 1, 1])
 
 
 if __name__ == "__main__":
