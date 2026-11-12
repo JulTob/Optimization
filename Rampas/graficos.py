@@ -90,25 +90,28 @@ def _dibujar_direcciones(eje, diagnostico, escala):
 
 
 def dibujar_familias(x, y, verdad=None, titulo=""):
-    """Las cuatro familias de §2.4 con los mismos datos y la misma escala."""
+    """Las familias de §2.4 con los mismos datos y la misma escala."""
     from .isotonica import ajustar_isotonica, evaluar_escalones, evaluar_nudos
-    from .rampas_1d import rampas_comprimidas, rampas_regularizadas
+    from .rampas_1d import rampas_comprimidas, rampas_libres, rampas_regularizadas
 
     nudos = ajustar_isotonica(x, y)
     familias = {
         "Isotónica escalonada": lambda t: evaluar_escalones(nudos, t),
         "Isotónica lineal": lambda t: evaluar_nudos(nudos, t),
         "Rampas comprimidas (K = 6)": rampas_comprimidas(x, y),
+        "Rampas libres (K = 6)": rampas_libres(x, y),
         "Rampas regularizadas": rampas_regularizadas(x, y),
         }
     malla = np.linspace(np.min(x), np.max(x), 1000)
-    figura, ejes = plt.subplots(2, 2, figsize=(11, 7), sharex=True, sharey=True, constrained_layout=True)
+    figura, ejes = plt.subplots(2, 3, figsize=(15, 7), sharex=True, sharey=True, constrained_layout=True)
     for eje, (nombre, curva) in zip(ejes.ravel(), familias.items()):
         eje.scatter(x, y, color="black", s=14, zorder=3)
         if verdad is not None:
             eje.plot(malla, verdad(malla), "--", color="gray", label="verdad")
         eje.plot(malla, curva(malla), color="tab:red", lw=2, label="ajuste")
         eje.set_title(nombre)
+    for eje in ejes.ravel()[len(familias):]:
+        eje.set_visible(False)
     ejes[0, 0].legend(loc="upper left")
     figura.suptitle(titulo)
     return figura

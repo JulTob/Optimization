@@ -63,13 +63,56 @@ def rampas_comprimidas(x, y, n_rampas=6):
     return ajustar_pesos(x, y, nudos[:-1], np.diff(nudos))
 
 
-def rampas_regularizadas(x, y, n_anchuras=4, n_posiciones=12, penalizacion=1e-3):
-    """Diccionario multiescala: anchuras (1, 1/2, 1/4, …)·rango; pesos ≥ 0 y λΣw²."""
+def rampas_libres(x, y, n_rampas=6, vueltas=10):
+    """K rampas de cualquier anchura, elegidas entre todas las que van de un nudo a otro.
+
+    Elegir el mejor subconjunto es combinatorio: se añade una rampa cada vez
+    (la que más reduce el error) y después se repasa cada una por turnos,
+    cambiándola por otra si mejora. El error nunca sube, así que termina.
+    """
+    nudos = np.unique(x)
+    i, j = np.triu_indices(len(nudos), k=1)
+    inicios, anchos = nudos[i], nudos[j] - nudos[i]
+    elegidas = []
+    for _ in range(min(n_rampas, len(inicios))):
+        elegidas.append(_mejor_candidata(x, y, elegidas, inicios, anchos))
+    for _ in range(vueltas):
+        hubo_cambio = False
+        for k in range(len(elegidas)):
+            otras = elegidas[:k] + elegidas[k + 1:]
+            nueva = _mejor_candidata(x, y, otras, inicios, anchos)
+            hubo_cambio |= nueva != elegidas[k]
+            elegidas[k] = nueva
+        if not hubo_cambio:
+            break
+    return ajustar_pesos(x, y, inicios[elegidas], anchos[elegidas])
+
+
+def _mejor_candidata(x, y, elegidas, inicios, anchos):
+    """Índice de la rampa que, añadida a `elegidas`, deja menos error."""
+    mejor, menor_error = None, np.inf
+    for c in range(len(inicios)):
+        if c in elegidas:
+            continue
+        indices = elegidas + [c]
+        ajuste = ajustar_pesos(x, y, inicios[indices], anchos[indices])
+        error = np.sum((y - ajuste(x)) ** 2)
+        if error < menor_error - 1e-12:
+            mejor, menor_error = c, error
+    return mejor
+
+
+def rampas_regularizadas(x, y, n_anchuras=4, penalizacion=1e-3):
+    """Catálogo multiescala fijo; pesos ≥ 0 y penalización λΣw².
+
+    Anchuras: el rango, la mitad, un cuarto, … Cada anchura se coloca
+    desplazándola media anchura cada vez: 1, 3, 7, 15, … posiciones distintas.
+    """
     minimo, rango = np.min(x), np.ptp(x)
     inicios, anchos = [], []
     for k in range(n_anchuras):
         ancho = rango / 2**k
-        posiciones = np.linspace(minimo, minimo + rango - ancho, n_posiciones)
-        inicios.extend(posiciones)
+        n_posiciones = 2 ** (k + 1) - 1
+        inicios.extend(np.linspace(minimo, minimo + rango - ancho, n_posiciones))
         anchos.extend([ancho] * n_posiciones)
     return ajustar_pesos(x, y, inicios, anchos, penalizacion)
