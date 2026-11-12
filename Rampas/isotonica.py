@@ -71,3 +71,9 @@ def evaluar_nudos(nudos, x):
     """Valor de las rampas de los nudos en x. Constante fuera del rango."""
     base, inicios, anchos, pesos = a_rampas(nudos)
     return base + matriz_de_rampas(x, inicios, anchos) @ pesos
+
+
+def evaluar_escalones(nudos, x):
+    """Extensión por escalones: el nivel del último nudo ≤ x. Constante fuera del rango."""
+    indice = np.searchsorted(nudos.posiciones, x, side="right") - 1
+    return nudos.niveles[np.clip(indice, 0, len(nudos.niveles) - 1)]

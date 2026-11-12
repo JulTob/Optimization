@@ -5,7 +5,7 @@ from fractions import Fraction
 import numpy as np
 from scipy.optimize import lsq_linear
 
-from Rampas.isotonica import a_rampas, ajustar_isotonica, evaluar_nudos
+from Rampas.isotonica import a_rampas, ajustar_isotonica, evaluar_escalones, evaluar_nudos
 from Rampas.rampas_1d import rampas_con_nudo_en_cada_dato
 from Rampas.senales import rampa_unitaria
 
@@ -35,6 +35,16 @@ class IsotonicaTests(unittest.TestCase):
         nudos = ajustar_isotonica([1, 1, 2, 2], [0.0, 2.0, 3.0, 5.0])
         np.testing.assert_allclose(nudos.posiciones, [1, 2])
         np.testing.assert_allclose(nudos.niveles, [1.0, 4.0])
+
+    def test_escalones_coinciden_con_la_lineal_en_los_nudos(case):
+        nudos = ajustar_isotonica(*muestra())
+        t = nudos.posiciones
+        np.testing.assert_allclose(evaluar_escalones(nudos, t), evaluar_nudos(nudos, t), atol=1e-12)
+        #-- Entre dos nudos vale el nivel del nudo de la izquierda; fuera, el extremo.
+        medio = (t[3] + t[4]) / 2
+        case.assertEqual(evaluar_escalones(nudos, medio), nudos.niveles[3])
+        case.assertEqual(evaluar_escalones(nudos, t[0] - 1), nudos.niveles[0])
+        case.assertEqual(evaluar_escalones(nudos, t[-1] + 1), nudos.niveles[-1])
 
     def test_entradas_invalidas(case):
         with case.assertRaises(ValueError):
