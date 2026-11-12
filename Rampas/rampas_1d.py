@@ -116,3 +116,54 @@ def rampas_regularizadas(x, y, n_anchuras=4, penalizacion=1e-3):
         inicios.extend(np.linspace(minimo, minimo + rango - ancho, n_posiciones))
         anchos.extend([ancho] * n_posiciones)
     return ajustar_pesos(x, y, inicios, anchos, penalizacion)
+
+
+def rampas_por_division(x, y, n_rampas=None, n_particiones=5, semilla=0):
+    """Empieza con una rampa de min(x) a max(x) y la va partiendo donde más mejora.
+
+    Cada paso prueba a partir cada rampa en cada nudo interior (no hace falta
+    que las partes sean iguales) y se queda con la mejor división.
+    Partir nunca empeora el entrenamiento, así que el número de rampas se
+    elige por VALIDACIÓN CRUZADA si no se da `n_rampas`.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if n_rampas is None:
+        n_rampas = _rampas_por_validacion(x, y, n_particiones, semilla)
+    return _camino_de_division(x, y, n_rampas)[-1]
+
+
+def _camino_de_division(x, y, n_rampas):
+    """Ajustes con 1, 2, …, n_rampas rampas, cada uno partiendo el anterior."""
+    candidatos = list(np.unique(x))
+    cortes = [candidatos.pop(0), candidatos.pop()]
+    camino = [_ajustar_entre_cortes(x, y, cortes)]
+    while len(camino) < n_rampas and candidatos:
+        errores = [_error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes + [c]))) for c in candidatos]
+        cortes = sorted(cortes + [candidatos.pop(int(np.argmin(errores)))])
+        camino.append(_ajustar_entre_cortes(x, y, cortes))
+    return camino
+
+
+def _rampas_por_validacion(x, y, n_particiones, semilla):
+    """Validación cruzada: cada dato valida una vez; se promedia el error por nº de rampas."""
+    orden = np.random.default_rng(semilla).permutation(len(x))
+    particiones = np.array_split(orden, n_particiones)
+    maximo = len(np.unique(x))
+    errores = np.zeros(maximo)
+    for val in particiones:
+        ent = np.setdiff1d(orden, val)
+        camino = _camino_de_division(x[ent], y[ent], maximo)
+        camino += [camino[-1]] * (maximo - len(camino))
+            #-- Si este reparto tiene menos nudos, el camino acaba antes: se repite el último.
+        errores += [_error(x[val], y[val], ajuste) for ajuste in camino]
+    return int(np.argmin(errores)) + 1
+
+
+def _ajustar_entre_cortes(x, y, cortes):
+    cortes = np.asarray(cortes)
+    return ajustar_pesos(x, y, cortes[:-1], np.diff(cortes))
+
+
+def _error(x, y, ajuste):
+    return float(np.sum((y - ajuste(x)) ** 2))

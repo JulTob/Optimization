@@ -6,7 +6,7 @@ import numpy as np
 from scipy.optimize import lsq_linear
 
 from Rampas.isotonica import a_rampas, ajustar_isotonica, evaluar_escalones, evaluar_nudos
-from Rampas.rampas_1d import rampas_con_nudo_en_cada_dato, rampas_libres, rampas_regularizadas
+from Rampas.rampas_1d import rampas_con_nudo_en_cada_dato, rampas_libres, rampas_por_division, rampas_regularizadas
 from Rampas.senales import rampa_unitaria
 
 
@@ -114,6 +114,19 @@ class FamiliasTests(unittest.TestCase):
             errores.append(np.sum((y - ajuste(x)) ** 2))
         #-- Más rampas nunca empeoran el ajuste, y nunca bajan de la isotónica (el óptimo monótono).
         case.assertTrue(errores[0] >= errores[1] >= errores[2] >= error_isotonica - 1e-9)
+
+    def test_rampas_por_division(case):
+        x, y = muestra()
+        nudos = ajustar_isotonica(x, y)
+        errores = [np.sum((y - rampas_por_division(x, y, K)(x)) ** 2) for K in (1, 2, 5, len(nudos.posiciones))]
+        #-- Partir nunca empeora el entrenamiento, y al final es la isotónica lineal.
+        case.assertTrue(all(a >= b - 1e-9 for a, b in zip(errores, errores[1:])))
+        case.assertAlmostEqual(errores[-1], np.sum((y - evaluar_nudos(nudos, x)) ** 2), places=8)
+        #-- Las rampas son contiguas: cada una empieza donde acaba la anterior.
+        ajuste = rampas_por_division(x, y, 5)
+        np.testing.assert_allclose(ajuste.inicios[1:], ajuste.inicios[:-1] + ajuste.anchos[:-1])
+        elegido = rampas_por_division(x, y)
+        case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
 
     def test_catalogo_regularizado_sin_rampas_repetidas(case):
         ajuste = rampas_regularizadas(*muestra())

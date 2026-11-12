@@ -92,7 +92,7 @@ def _dibujar_direcciones(eje, diagnostico, escala):
 def dibujar_familias(x, y, verdad=None, titulo=""):
     """Las familias de §2.4 con los mismos datos y la misma escala."""
     from .isotonica import ajustar_isotonica, evaluar_escalones, evaluar_nudos
-    from .rampas_1d import rampas_comprimidas, rampas_libres, rampas_regularizadas
+    from .rampas_1d import rampas_comprimidas, rampas_libres, rampas_por_division, rampas_regularizadas
 
     nudos = ajustar_isotonica(x, y)
     familias = {
@@ -102,6 +102,8 @@ def dibujar_familias(x, y, verdad=None, titulo=""):
         "Rampas libres (K = 6)": rampas_libres(x, y),
         "Rampas regularizadas": rampas_regularizadas(x, y),
         }
+    por_division = rampas_por_division(x, y)
+    familias[f"Rampas por división (K = {len(por_division.pesos)}, validación)"] = por_division
     malla = np.linspace(np.min(x), np.max(x), 1000)
     figura, ejes = plt.subplots(2, 3, figsize=(15, 7), sharex=True, sharey=True, constrained_layout=True)
     for eje, (nombre, curva) in zip(ejes.ravel(), familias.items()):
