@@ -61,6 +61,18 @@ class DiagnosticoTests(unittest.TestCase):
         with case.assertRaises(ValueError):
             ajustar_pathfinder(X, y[:-1])
 
+    def test_la_red_de_zigurat_son_rectas_en_los_ejes(case):
+        from Rampas.graficos import dibujar_redes, nudos_activos
+        X, z = muestra_2d(ESTRUCTURAS["aditiva"], 80, 0.1, 0)
+        modelo = ajustar_zigurat(X, z)
+        for componente in modelo.componentes:
+            nudos = nudos_activos(componente)
+            case.assertTrue(nudos.size >= 2)
+            case.assertTrue(np.all((0 <= nudos) & (nudos <= 1)))
+        muestras = {"aditiva": (X, z, ESTRUCTURAS["aditiva"])}
+        figura = dibujar_redes(muestras, resolucion=40)
+        case.assertEqual(len(figura.axes), 3)
+
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
         angulos = ajustar_tangentes(X, y).angulos_grados()

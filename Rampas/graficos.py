@@ -160,3 +160,63 @@ def dibujar_familias(x, y, verdad=None, titulo=""):
     ejes[0, 0].legend(loc="upper left")
     figura.suptitle(titulo)
     return figura
+
+
+def nudos_activos(componente, tolerancia=1e-9):
+    """Los nudos donde una rampa de la componente empieza o acaba.
+
+    Entre dos nudos consecutivos hay una rampa de peso igual al salto de
+    niveles; si el salto es nulo, la rampa no existe y sus nudos no
+    cambian nada. En el plano, cada nudo activo es una curva de cambio de
+    pendiente: recta, círculo o recta oblicua según la proyección.
+    """
+    posiciones = np.asarray(componente.nudos.posiciones, dtype=float)
+    saltos = np.diff(np.asarray(componente.nudos.niveles, dtype=float))
+    if saltos.size == 0:
+        return np.zeros(0)
+    escala = max(float(np.max(np.abs(saltos))), 1e-300)
+    activos = np.nonzero(saltos > tolerancia * escala)[0]
+    return np.unique(np.concatenate([posiciones[activos], posiciones[activos + 1]]))
+
+
+def dibujar_redes(muestras, resolucion=200):
+    """La red de nudos de cada modelo en cada estructura: el 3×3 a la vista.
+
+    `muestras` es un diccionario nombre → (X, z, verdad). Filas:
+    estructuras; columnas: Zigurat, Diana y Tangentes ajustados a esos
+    datos. Cada modelo es lineal a trozos sobre la red que forman sus
+    nudos: cuadrícula (Zigurat), anillos (Diana) o familias de rectas
+    paralelas, una por dirección (Tangentes, un color por familia).
+    """
+    from .modelos_2d import ajustar_diana, ajustar_tangentes, ajustar_zigurat
+    ajustes = (ajustar_zigurat, ajustar_diana, ajustar_tangentes)
+    colores = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    lado = np.linspace(0, 1, resolucion)
+    A, B = np.meshgrid(lado, lado)
+    puntos = np.column_stack([A.ravel(), B.ravel()])
+
+    figura, ejes = plt.subplots(
+            len(muestras), len(ajustes),
+            figsize=(3.6 * len(ajustes), 3.4 * len(muestras)),
+            sharex=True, sharey=True, squeeze=False,
+            )
+    for fila, (nombre, (X, z, verdad)) in enumerate(muestras.items()):
+        for columna, ajustar in enumerate(ajustes):
+            eje = ejes[fila, columna]
+            modelo = ajustar(X, z)
+            eje.contourf(A, B, verdad(puntos).reshape(A.shape), levels=12, cmap="Greys", alpha=0.35)
+            for k, componente in enumerate(modelo.componentes):
+                nudos = nudos_activos(componente)
+                if nudos.size == 0:
+                    continue
+                proyectados = componente.proyeccion(modelo.escala(puntos)).reshape(A.shape)
+                eje.contour(A, B, proyectados, levels=nudos,
+                            colors=colores[k % len(colores)], linewidths=0.8)
+            eje.set(xlim=(0, 1), ylim=(0, 1))
+            if fila == 0:
+                eje.set_title(modelo.nombre)
+            if columna == 0:
+                eje.set_ylabel(f"{nombre}\ny")
+            if fila == len(muestras) - 1:
+                eje.set_xlabel("x")
+    return figura
