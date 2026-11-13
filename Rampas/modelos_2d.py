@@ -10,9 +10,9 @@ Para Tangentes la monotonía está garantizada; la optimalidad, no
 """
 import numpy as np
 from dataclasses import dataclass
-from scipy.optimize import minimize_scalar
+from scipy.optimize import lsq_linear, minimize_scalar
 from .dominio import Escala
-from .isotonica import ajustar_isotonica, evaluar_nudos
+from .isotonica import Nudos, ajustar_isotonica, evaluar_nudos
 from .aditivo import (
         Componente, ajustar_componente, direccion, eje, radio, retroajustar, sumar,
         )
@@ -116,3 +116,189 @@ def ajustar_tangentes(X, y, max_direcciones=6, fraccion_validacion=0.25, semilla
     angulos, componentes = retroajustar_direcciones(angulos, Z, y)
     return Modelo2D("Tangentes", escala, componentes)
 
+
+# ---------------------------------------------------------------- Ascenso (pathfinder)
+def ajustar_ascenso(X, y, pasos=None, sensibilidad=0.05, n_barrido=45):
+    """Ascenso de rampas (pathfinder): avanzar y escalar, una rampa por paso.
+
+    Desde el origen del dominio normalizado, cada paso hace tres cosas:
+
+    1. Elige la dirección de mejor crecimiento isotónico del residuo,
+       como en Tangentes (el isotónico ve toda la estructura).
+    2. Sobre esa dirección busca el tramo [a, b] cuya rampa sola más
+       reduce el residuo, con a por delante de la posición actual:
+       el pathfinder puede CAMINAR por el llano (de la posición hasta a,
+       sin subir) antes de ESCALAR (de a a b).
+    3. Reajusta la base y todos los pesos juntos (mínimos cuadrados con
+       pesos ≥ 0, §2.3) y avanza la posición al punto de saturación.
+
+    Cada rampa nueva vale 0 por debajo de la posición desde la que se
+    lanzó (componente a componente), así que lo ya recorrido no se toca.
+    Un paso se acepta si quita al menos `sensibilidad` del error que
+    queda: el mismo criterio de parada que rampas por división. `pasos`
+    lo limita (None: sin tope; acaba igual, los nudos son los datos).
+
+    El modelo queda descrito por la base y los tramos (û_k, a_k, b_k)
+    con sus pesos: la rampa k vale w_k · r((x·û_k − a_k)/(b_k − a_k)).
+    El camino se recupera con `camino_del_ascenso`.
+    """
+    y = np.asarray(y, dtype=float)
+    if y.ndim != 1 or y.size == 0 or not np.all(np.isfinite(y)):
+        raise ValueError("y debe ser un vector finito no vacío.")
+    if pasos is not None and (not isinstance(pasos, (int, np.integer)) or pasos < 1):
+        raise ValueError("pasos debe ser un entero mayor o igual que 1, o None.")
+    sensibilidad = float(sensibilidad)
+    if not np.isfinite(sensibilidad) or sensibilidad <= 0:
+        raise ValueError("sensibilidad debe ser positiva.")
+
+    escala = Escala.de_los_datos(X)
+    Z = escala(X)
+    if len(Z) != len(y):
+        raise ValueError("X e y deben tener el mismo número de datos.")
+
+    posicion = np.zeros(2)
+    tramos = []         #-- (ángulo, inicio, fin) de cada rampa aceptada, en orden.
+    pesos = np.zeros(0)
+    base = float(np.mean(y))
+    error_actual = float(np.sum((y - base) ** 2))
+
+    while pasos is None or len(tramos) < pasos:
+        if error_actual <= 0:
+            break
+            #-- Ajuste ya exacto: no hay nada que mejorar.
+        residuo = y - _evaluar_ascenso(Z, base, tramos, pesos)
+        paso = _paso_mas_cercano(
+                Z, residuo, posicion, error_actual, sensibilidad, n_barrido,
+                )
+        if paso is None:
+            break
+            #-- Nada sube por delante de la posición: fin del camino.
+        angulo = paso[0]
+        candidatos = tramos + [paso]
+        base_nueva, pesos_nuevos = _pesos_del_ascenso(Z, y, candidatos)
+        error_nuevo = float(np.sum(
+                (y - _evaluar_ascenso(Z, base_nueva, candidatos, pesos_nuevos)) ** 2
+                ))
+        if (error_actual - error_nuevo) / error_actual <= sensibilidad:
+            break
+            #-- Punto estable: el paso no quita una fracción perceptible del error.
+        tramos, base, pesos, error_actual = (
+                candidatos, base_nueva, pesos_nuevos, error_nuevo
+                )
+        posicion = posicion + (paso[2] - float(posicion @ _rumbo(angulo))) * _rumbo(angulo)
+        #-- La posición salta al punto de saturación de la rampa nueva.
+
+    return Modelo2D("Ascenso", escala, _componentes_del_ascenso(base, tramos, pesos))
+
+
+def camino_del_ascenso(modelo):
+    """Los puntos del camino (llanos y subidas), en el dominio normalizado.
+
+    El camino es en sí mismo un diagnóstico visual: recto en datos
+    direccionales, en escalera (tramos a 0° y 90°) en datos aditivos.
+    """
+    posicion = np.zeros(2)
+    puntos = [posicion.copy()]
+    for componente in modelo.componentes:
+        angulo = componente.proyeccion.angulo
+        if angulo is None or len(componente.nudos.posiciones) < 2:
+            continue
+        inicio, fin = componente.nudos.posiciones[0], componente.nudos.posiciones[-1]
+        avance = float(inicio) - float(posicion @ _rumbo(angulo))
+        if avance > 1e-12:
+            posicion = posicion + avance * _rumbo(angulo)
+            puntos.append(posicion.copy())
+            #-- Tramo llano: caminar hasta donde empieza la subida.
+        posicion = posicion + float(fin - inicio) * _rumbo(angulo)
+        puntos.append(posicion.copy())
+    return np.array(puntos)
+
+
+def _rumbo(angulo):
+    """El vector unitario û = (cos θ, sen θ): θ en [0°, 90°] ⇒ û ≥ 0."""
+    return np.array([np.cos(angulo), np.sin(angulo)])
+
+
+def _paso_mas_cercano(Z, residuo, posicion, error_actual, sensibilidad, n_barrido):
+    """El paso MÍNIMO aceptable: avanzar poco y reevaluar, como en el
+    ascenso por gradiente.
+
+    La dirección es la de mejor crecimiento isotónico del residuo (el
+    isotónico ve toda la estructura, no solo lo que hace una rampa).
+    El tramo arranca donde el isotónico de los datos de delante empieza
+    a subir, y acaba en el candidato MÁS CERCANO cuya rampa ya quita la
+    fracción `sensibilidad` del error. El paso glotón (el mejor tramo
+    posible) saltaría lejos y dejaría atrás, irrecuperable, lo no
+    explicado; el paso mínimo deja que el camino se adapte.
+    """
+    angulo = mejor_angulo(Z, residuo, n_barrido)
+    proyectados = Z @ _rumbo(angulo)
+    por_delante = proyectados > float(posicion @ _rumbo(angulo)) + 1e-12
+    if not np.any(por_delante):
+        return None
+
+    nudos = ajustar_isotonica(proyectados[por_delante], residuo[por_delante])
+    subidas = np.nonzero(np.diff(nudos.niveles) > 1e-12)[0]
+    if subidas.size == 0:
+        return None
+        #-- El residuo de delante es plano: no hay nada que escalar.
+    inicio = float(nudos.posiciones[subidas[0]])
+
+    mejor_fin, mejor_error = None, np.inf
+    for fin in np.unique(proyectados[proyectados > inicio + 1e-12]):
+        rampa = np.clip((proyectados - inicio) / (fin - inicio), 0.0, 1.0)
+        peso = max(0.0, float(rampa @ residuo) / float(rampa @ rampa))
+        error = float(np.sum((residuo - peso * rampa) ** 2))
+        if error < mejor_error:
+            mejor_fin, mejor_error = float(fin), error
+        if (error_actual - error) / error_actual > sensibilidad:
+            return (float(angulo), inicio, float(fin))
+            #-- Primer candidato que ya es perceptible: paso mínimo.
+    if mejor_fin is None:
+        return None
+    return (float(angulo), inicio, mejor_fin)
+    #-- Ningún fin llega solo al umbral: se propone el mejor y el
+    #-- reajuste conjunto del bucle principal da el veredicto.
+
+
+def _rampa_del_tramo(Z, tramo):
+    angulo, inicio, fin = tramo
+    return np.clip((Z @ _rumbo(angulo) - inicio) / (fin - inicio), 0.0, 1.0)
+
+
+def _pesos_del_ascenso(Z, y, tramos):
+    """Reajuste conjunto: base libre y un peso ≥ 0 por rampa."""
+    diseno = np.column_stack(
+            [np.ones(len(Z))] + [_rampa_del_tramo(Z, tramo) for tramo in tramos]
+            )
+    resultado = lsq_linear(
+            diseno,
+            y,
+            bounds=(np.r_[-np.inf, np.zeros(len(tramos))], np.inf),
+            method="bvls",
+            tol=1e-12,
+            )
+    if not resultado.success:
+        raise RuntimeError(f"El ajuste no ha convergido: {resultado.message}")
+    return float(resultado.x[0]), resultado.x[1:]
+
+
+def _evaluar_ascenso(Z, base, tramos, pesos):
+    total = np.full(len(Z), base)
+    for tramo, peso in zip(tramos, pesos):
+        total = total + peso * _rampa_del_tramo(Z, tramo)
+    return total
+
+
+def _componentes_del_ascenso(base, tramos, pesos):
+    """Cada paso es una Componente de dos nudos; la base va en el primero."""
+    if not tramos:
+        return [Componente(eje(0), Nudos(np.zeros(1), np.array([base])))]
+    componentes = []
+    for k, ((angulo, inicio, fin), peso) in enumerate(zip(tramos, pesos)):
+        nivel = base if k == 0 else 0.0
+        componentes.append(Componente(
+                direccion(angulo),
+                Nudos(np.array([inicio, fin]), np.array([nivel, nivel + peso])),
+                ))
+    return componentes
