@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear
 from .senales import matriz_de_rampas
-from .ruido import umbral_de_mejora, varianza_del_ruido
+from .ruido import calibrar_umbral
 
 
 @dataclass(frozen=True)
@@ -124,10 +124,11 @@ def rampas_por_division(x, y, profundidad=None, confianza=0.95):
 
     Se empieza con una sola rampa, de min(x) a max(x). En cada intervalo
     se busca el nudo interior que más reduce el error, y el corte se
-    acepta si su mejora supera el UMBRAL DE RUIDO: el error que robaría
-    un grado de libertad ajustado a ruido puro, al nivel de confianza
-    dado (χ²₁(confianza)·σ̂²; ver Rampas.ruido). σ̂² se estima una sola
-    vez, antes de la búsqueda. Aceptado el corte, la búsqueda se repite
+    acepta si su mejora supera el UMBRAL DE RUIDO: lo que esta misma
+    búsqueda le saca a ruido puro, al nivel de confianza dado. El
+    umbral se calibra UNA VEZ, antes de la búsqueda, remuestreando el
+    ruido de los propios datos (Rampas.ruido: sin suponerle ninguna
+    distribución). Aceptado el corte, la búsqueda se repite
     dentro de [izquierda, corte] y de [corte, derecha]: el número de
     rampas EMERGE de la búsqueda.
 
@@ -147,10 +148,24 @@ def rampas_por_division(x, y, profundidad=None, confianza=0.95):
     if posiciones.size < 2:
         raise ValueError("Hacen falta al menos dos valores de x distintos.")
 
-    umbral = umbral_de_mejora(varianza_del_ruido(x, y), confianza)
+    umbral = calibrar_umbral(x, y, _robo_del_mejor_corte, confianza)
     cortes = [float(posiciones[0]), float(posiciones[-1])]
     _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, umbral)
     return _ajustar_entre_cortes(x, y, sorted(cortes))
+
+
+def _robo_del_mejor_corte(x, ruido):
+    """Un paso de la división sobre ruido puro: cuánto error elimina
+    el mejor corte. Es la búsqueda real, usada para calibrar su umbral."""
+    cortes = [float(np.min(x)), float(np.max(x))]
+    base = _error(x, ruido, _ajustar_entre_cortes(x, ruido, cortes))
+    candidatos = np.unique(x)[1:-1]
+    if candidatos.size == 0:
+        return 0.0
+    return base - min(
+        _error(x, ruido, _ajustar_entre_cortes(x, ruido, sorted(cortes + [float(c)])))
+        for c in candidatos
+        )
 
 
 def _dividir(x, y, cortes, izquierda, derecha, profundidad, umbral):

@@ -12,7 +12,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear, minimize_scalar
 from .dominio import Escala
-from .ruido import umbral_de_mejora, varianza_del_ruido
+from .ruido import calibrar_umbral
 from .isotonica import Nudos, ajustar_isotonica, evaluar_nudos
 from .aditivo import (
         Componente, ajustar_componente, direccion, eje, radio, retroajustar, sumar,
@@ -135,10 +135,11 @@ def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
 
     Cada rampa nueva vale 0 por debajo de la posición desde la que se
     lanzó (componente a componente), así que lo ya recorrido no se toca.
-    Un paso se acepta si su mejora supera el UMBRAL DE RUIDO: el error
-    que robaría un grado de libertad ajustado a ruido puro, al nivel de
-    confianza dado (χ²₁(confianza)·σ̂²; ver Rampas.ruido). σ̂² se estima
-    una sola vez, antes de la búsqueda: el mismo criterio de parada que
+    Un paso se acepta si su mejora supera el UMBRAL DE RUIDO: lo que
+    esta misma búsqueda le saca a ruido puro, al nivel de confianza
+    dado. El umbral se calibra UNA VEZ, antes de la búsqueda,
+    remuestreando el ruido de los propios datos (Rampas.ruido: sin
+    suponerle ninguna distribución): el mismo criterio de parada que
     rampas por división. `pasos` lo limita (None: sin tope; acaba
     igual, porque los nudos son los datos, finitos).
 
@@ -156,7 +157,10 @@ def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
     Z = escala(X)
     if len(Z) != len(y):
         raise ValueError("X e y deben tener el mismo número de datos.")
-    umbral = umbral_de_mejora(varianza_del_ruido(Z, y), confianza)
+    def robo_de_un_paso(entradas, ruido):
+        return _robo_de_un_paso(entradas, ruido, n_barrido)
+
+    umbral = calibrar_umbral(Z, y, robo_de_un_paso, confianza)
 
     posicion = np.zeros(2)
     tramos = []         #-- (ángulo, inicio, fin) de cada rampa aceptada, en orden.
@@ -221,6 +225,24 @@ def camino_del_pathfinder(modelo):
 def _rumbo(angulo):
     """El vector unitario û = (cos θ, sen θ): θ en [0°, 90°] ⇒ û ≥ 0."""
     return np.array([np.cos(angulo), np.sin(angulo)])
+
+
+def _robo_de_un_paso(Z, ruido, n_barrido=45):
+    """Un paso del Pathfinder sobre ruido puro: cuánto error elimina.
+    Es la búsqueda real, usada para calibrar su umbral."""
+    base = float(np.mean(ruido))
+    error_base = float(np.sum((ruido - base) ** 2))
+    if error_base <= 0:
+        return 0.0
+    paso = _paso_mas_cercano(
+            Z, ruido - base, np.zeros(Z.shape[1]), error_base, np.inf, n_barrido,
+            )
+    if paso is None:
+        return 0.0
+    base_nueva, pesos = _pesos_del_pathfinder(Z, ruido, [paso])
+    return error_base - float(np.sum(
+            (ruido - _evaluar_pathfinder(Z, base_nueva, [paso], pesos)) ** 2
+            ))
 
 
 def _paso_mas_cercano(Z, residuo, posicion, error_actual, umbral, n_barrido):
