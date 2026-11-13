@@ -1,4 +1,4 @@
-"""El 3×3: tres estructuras × tres modelos, ordenados por error de predicción.
+"""El 3×3: tres estructuras × tres modelos, ordenados por error de señal.
 
 Si el modelo con la estructura correcta gana (la diagonal), el ranking
 diagnostica cómo se combinan las variables. Además, los ángulos de
@@ -27,11 +27,14 @@ EXPLORADORES = {
 
 def una_repeticion(verdad, semilla, n=150, sigma=0.1, n_prueba=3000):
     X, y = muestra_2d(verdad, n, sigma, semilla)
-    X_prueba, y_prueba = muestra_2d(verdad, n_prueba, sigma, 10_000 + semilla)
+    X_prueba, _ = muestra_2d(verdad, n_prueba, sigma, 10_000 + semilla)
+    senal = verdad(X_prueba)
+    #-- Error de señal ⟨|f − s|²⟩ en puntos nuevos del dominio, como en §3.2:
+    #-- con la señal conocida, el ruido de prueba solo añadiría niebla.
     errores, angulos = {}, None
     for nombre, ajustar in {**MODELOS, **EXPLORADORES}.items():
         modelo = ajustar(X, y)
-        errores[nombre] = np.mean((y_prueba - modelo.predecir(X_prueba)) ** 2)
+        errores[nombre] = np.mean((senal - modelo.predecir(X_prueba)) ** 2)
         if nombre == "Tangentes":
             angulos = modelo.angulos_grados()
     return errores, angulos

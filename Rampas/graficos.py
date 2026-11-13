@@ -27,8 +27,34 @@ def dibujar_mapas_2d(X, y, modelos, verdad=None):
     for eje, (nombre, funcion) in zip(np.atleast_1d(ejes), paneles.items()):
         relleno = eje.contourf(A, B, funcion(puntos).reshape(A.shape), levels=12)
         eje.scatter(X[:, 0], X[:, 1], c="white", s=5, alpha=0.6)
-        eje.set(title=nombre, xlabel="x1")
+        eje.set(title=nombre, xlabel="x")
+    np.atleast_1d(ejes)[0].set_ylabel("y")
     figura.colorbar(relleno, ax=ejes)
+    return figura
+
+
+def dibujar_caminos(muestras, titulo=""):
+    """El camino del Pathfinder sobre la señal, un panel por estructura.
+
+    `muestras` es un diccionario nombre → (X, z, verdad). Cada panel
+    dibuja los contornos de la señal verdadera, los datos y el camino
+    P₀, P₁, … del Pathfinder ajustado a esos datos: la forma del camino
+    es el diagnóstico.
+    """
+    from .modelos_2d import ajustar_pathfinder, camino_del_pathfinder
+    lado = np.linspace(0, 1, 80)
+    A, B = np.meshgrid(lado, lado)
+    puntos = np.column_stack([A.ravel(), B.ravel()])
+    figura, ejes = plt.subplots(1, len(muestras), figsize=(4 * len(muestras), 3.8), sharey=True)
+    for eje, (nombre, (X, z, verdad)) in zip(np.atleast_1d(ejes), muestras.items()):
+        eje.contourf(A, B, verdad(puntos).reshape(A.shape), levels=12, alpha=0.8)
+        eje.scatter(X[:, 0], X[:, 1], c="white", s=5, alpha=0.6)
+        camino = camino_del_pathfinder(ajustar_pathfinder(X, z))
+        eje.plot(camino[:, 0], camino[:, 1], "-o", color="tab:red", lw=2, ms=3)
+        eje.set(title=nombre, xlabel="x", xlim=(0, 1), ylim=(0, 1))
+    np.atleast_1d(ejes)[0].set_ylabel("y")
+    if titulo:
+        figura.suptitle(titulo)
     return figura
 
 
