@@ -174,23 +174,20 @@ def _clasificacion(puestos, modelos):
 
     Puesto 1 = menor error de señal en esa jornada; los empates
     comparten el mejor puesto, y un ajuste fallido no puntúa. Los
-    PUNTOS de una jornada son 1/puesto (1 la victoria, ½ el segundo,
-    ⅓ el tercero…): premian los podios y apenas distinguen el fondo
-    de la tabla. El puesto medio, lineal, mide la consistencia; las
-    dos columnas responden preguntas distintas.
+    clasificación ordena por puesto medio: la media del puesto es la
+    medida de consistencia, y Mejor y Peor acotan la variabilidad.
     """
     filas = []
     for nombre in modelos:
         filas.append({
             "Modelo": nombre,
-            "Puntos": float((1.0 / puestos[nombre]).sum()),
             "Victorias": int((puestos[nombre] == 1).sum()),
             "Puesto medio": puestos[nombre].mean(),
             "Mejor": puestos[nombre].min(),
             "Peor": puestos[nombre].max(),
         })
     tabla = pd.DataFrame(filas).set_index("Modelo")
-    return tabla.sort_values("Puntos", ascending=False, na_position="last")
+    return tabla.sort_values("Puesto medio", na_position="last")
 
 
 def _errores_por_repeticion(

@@ -121,13 +121,10 @@ class Ranking(unittest.TestCase):
             semilla=1, modelos=case.modelos_rapidos(),
             )
         case.assertEqual(
-            list(tabla.columns),
-            ["Puntos", "Victorias", "Puesto medio", "Mejor", "Peor"],
+            list(tabla.columns), ["Victorias", "Puesto medio", "Mejor", "Peor"],
             )
-        puntos = tabla["Puntos"].to_numpy()
-        case.assertTrue(np.all(np.diff(puntos) <= 0))
-        case.assertAlmostEqual(float(tabla["Puntos"].sum()), 4 * (1 + 1/2 + 1/3), places=9)
-        #-- Cada jornada reparte 1 + 1/2 + 1/3 entre los tres modelos.
+        puestos = tabla["Puesto medio"].to_numpy()
+        case.assertTrue(np.all(np.diff(puestos) >= 0))
         case.assertTrue((tabla["Mejor"] <= tabla["Peor"]).all())
         case.assertEqual(int(tabla["Victorias"].sum()), 4)
         #-- Una victoria por repetición (sin empates de coma flotante).
@@ -140,7 +137,7 @@ class Ranking(unittest.TestCase):
             )
         case.assertEqual(int(liga["Victorias"].sum()), 6)
         #-- Una victoria por jornada: 2 escenarios × 3 repeticiones.
-        case.assertTrue(np.all(np.diff(liga["Puntos"].to_numpy()) <= 0))
+        case.assertTrue(np.all(np.diff(liga["Puesto medio"].to_numpy()) >= 0))
         with case.assertRaises(ValueError):
             liga_de_victorias([])
 
@@ -155,7 +152,6 @@ class Ranking(unittest.TestCase):
                       "Recta": catalogo_de_referencias()["Recta"] },
             )
         case.assertEqual(int(tabla.loc["Roto", "Victorias"]), 0)
-        case.assertEqual(float(tabla.loc["Roto", "Puntos"]), 0.0)
         case.assertTrue(np.isnan(tabla.loc["Roto", "Puesto medio"]))
         case.assertEqual(tabla.index[-1], "Roto")
 
