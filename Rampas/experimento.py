@@ -51,3 +51,43 @@ def ejecutar(repeticiones=10, **opciones):
             #-- Solo las hipótesis concursan: el explorador queda fuera del diagnóstico.
         angulos[estructura] = [a for _, a in resultados]
     return pd.DataFrame(medias).T, pd.DataFrame(victorias).T, angulos
+
+
+def ranking_2d(repeticiones=10, n=50, sigma=0.1, n_prueba=3000):
+    """Ranking de cada combinación modelo · estructura, por error de señal.
+
+    Cada fila es un modelo ajustado a datos de una estructura (por
+    ejemplo «Tangentes · radial»), con la media de sus errores en las
+    repeticiones:
+
+        Entrenamiento  ⟨|z − f|²⟩ sobre los datos del ajuste;
+        Prueba         ⟨|z − f|²⟩ sobre datos nuevos (señal + ruido);
+        Señal          ⟨|f − s|²⟩ sobre los mismos puntos nuevos, sin ruido.
+
+    La tabla se ordena por error de señal medio. Las repeticiones usan
+    las mismas semillas que `ejecutar`.
+    """
+    filas = []
+    modelos = {**MODELOS, **EXPLORADORES}
+    for estructura, verdad in ESTRUCTURAS.items():
+        errores = {nombre: {"ent": [], "pru": [], "sen": []} for nombre in modelos}
+        for semilla in range(repeticiones):
+            X, z = muestra_2d(verdad, n, sigma, semilla)
+            X_prueba, z_prueba = muestra_2d(verdad, n_prueba, sigma, 10_000 + semilla)
+            senal = verdad(X_prueba)
+            for nombre, ajustar in modelos.items():
+                modelo = ajustar(X, z)
+                prediccion = modelo.predecir(X_prueba)
+                errores[nombre]["ent"].append(np.mean((z - modelo.predecir(X)) ** 2))
+                errores[nombre]["pru"].append(np.mean((z_prueba - prediccion) ** 2))
+                errores[nombre]["sen"].append(np.mean((senal - prediccion) ** 2))
+        for nombre, e in errores.items():
+            filas.append({
+                "Modelo · estructura": f"{nombre} · {estructura}",
+                "Entrenamiento": float(np.mean(e["ent"])),
+                "Prueba": float(np.mean(e["pru"])),
+                "Señal (media)": float(np.mean(e["sen"])),
+                "Señal (varianza)": float(np.var(e["sen"], ddof=1)),
+            })
+    tabla = pd.DataFrame(filas).set_index("Modelo · estructura")
+    return tabla.sort_values("Señal (media)")

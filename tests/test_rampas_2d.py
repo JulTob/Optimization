@@ -107,6 +107,14 @@ class DiagnosticoTests(unittest.TestCase):
         json.dumps(especificacion)
         #-- Serializable: Plotly la recibe tal cual.
 
+    def test_ranking_2d(case):
+        from Rampas.experimento import ranking_2d
+        tabla = ranking_2d(repeticiones=2, n=30, n_prueba=200)
+        case.assertEqual(len(tabla), 12)
+        #-- Cuatro modelos (tres hipótesis y el Pathfinder) por tres estructuras.
+        case.assertIn("Tangentes · radial", tabla.index)
+        case.assertTrue(np.all(np.diff(tabla["Señal (media)"].to_numpy()) >= 0))
+
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
         angulos = ajustar_tangentes(X, y).angulos_grados()
