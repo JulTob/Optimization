@@ -284,3 +284,132 @@ def dibujar_superficies(X, z, verdad=None, resolucion=40, vista=(30, -60)):
         eje.set(title=titulo, xlabel="x", ylabel="y", zlabel="z", zlim=(abajo, arriba))
         eje.view_init(*vista)
     return figura
+
+
+MODELOS_3D = ("Señal", "Zigurat", "Diana", "Tangentes", "Pathfinder")
+
+
+def especificacion_3d(muestras, resolucion=40):
+    """La figura 3D interactiva como diccionario de Plotly, sin importar Plotly.
+
+    `muestras` es un diccionario nombre → (X, z, verdad). Hay una
+    superficie por estructura y modelo (la señal incluida) y una nube de
+    datos por estructura; un desplegable elige qué superficie se ve,
+    junto con los datos de su estructura. La vista se conserva al
+    cambiar de modelo (uirevision), así que se comparan desde el mismo
+    ángulo. Separar la especificación del dibujo permite comprobarla sin
+    Plotly; `figura_3d_interactiva` la convierte en figura.
+    """
+    from .modelos_2d import (
+            ajustar_diana, ajustar_pathfinder, ajustar_tangentes, ajustar_zigurat,
+            )
+    ajustes = {
+        "Zigurat": ajustar_zigurat,
+        "Diana": ajustar_diana,
+        "Tangentes": ajustar_tangentes,
+        "Pathfinder": ajustar_pathfinder,
+        }
+    lado = np.linspace(0, 1, resolucion)
+    A, B = np.meshgrid(lado, lado)
+    puntos = np.column_stack([A.ravel(), B.ravel()])
+
+    trazas, opciones = [], []
+    for nombre, (X, z, verdad) in muestras.items():
+        senal = verdad(puntos)
+        alturas = {"Señal": senal}
+        for modelo, ajustar in ajustes.items():
+            alturas[modelo] = ajustar(X, z).predecir(puntos)
+        abajo = float(min(np.min(z), *(np.min(h) for h in alturas.values())))
+        arriba = float(max(np.max(z), *(np.max(h) for h in alturas.values())))
+
+        indice_datos = len(trazas) + len(MODELOS_3D)
+        for modelo in MODELOS_3D:
+            altura = alturas[modelo]
+            trazas.append({
+                "type": "surface",
+                "name": f"{nombre} · {modelo}",
+                "x": lado.round(4).tolist(),
+                "y": lado.round(4).tolist(),
+                "z": altura.reshape(A.shape).round(4).tolist(),
+                "colorscale": "Viridis",
+                "cmin": abajo,
+                "cmax": arriba,
+                "showscale": False,
+                "opacity": 0.9,
+                "visible": False,
+                })
+            titulo = f"{nombre} · {modelo}"
+            if modelo != "Señal":
+                error = float(np.mean((altura - senal) ** 2))
+                titulo += f" · ⟨|f − s|²⟩ = {error:.4f}"
+            opciones.append({
+                "etiqueta": f"{nombre} · {modelo}",
+                "superficie": len(trazas) - 1,
+                "datos": indice_datos,
+                "titulo": titulo,
+                "rango": [abajo, arriba],
+                })
+        trazas.append({
+            "type": "scatter3d",
+            "name": f"{nombre} · datos",
+            "mode": "markers",
+            "x": X[:, 0].round(4).tolist(),
+            "y": X[:, 1].round(4).tolist(),
+            "z": np.asarray(z).round(4).tolist(),
+            "marker": {"size": 3, "color": "black"},
+            "visible": False,
+            })
+
+    botones = []
+    for opcion in opciones:
+        visibles = [False] * len(trazas)
+        visibles[opcion["superficie"]] = True
+        visibles[opcion["datos"]] = True
+        botones.append({
+            "label": opcion["etiqueta"],
+            "method": "update",
+            "args": [
+                {"visible": visibles},
+                {"title.text": opcion["titulo"], "scene.zaxis.range": opcion["rango"]},
+                ],
+            })
+    primera = opciones[0]
+    for indice in (primera["superficie"], primera["datos"]):
+        trazas[indice]["visible"] = True
+
+    return {
+        "data": trazas,
+        "layout": {
+            "title": {"text": primera["titulo"]},
+            "height": 600,
+            "uirevision": "vista",
+            "scene": {
+                "uirevision": "vista",
+                "xaxis": {"title": {"text": "x"}, "range": [0, 1]},
+                "yaxis": {"title": {"text": "y"}, "range": [0, 1]},
+                "zaxis": {"title": {"text": "z"}, "range": primera["rango"]},
+                },
+            "updatemenus": [{
+                "buttons": botones,
+                "direction": "down",
+                "x": 0.0,
+                "xanchor": "left",
+                "y": 1.12,
+                "yanchor": "top",
+                }],
+            },
+        }
+
+
+def figura_3d_interactiva(muestras, resolucion=40):
+    """Figura Plotly que se rota y se amplía con el ratón, con desplegable.
+
+    Necesita Plotly (viene instalado en Colab).
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError as error:
+        raise ImportError(
+            "La figura interactiva necesita Plotly: pip install plotly"
+        ) from error
+    return go.Figure(especificacion_3d(muestras, resolucion))

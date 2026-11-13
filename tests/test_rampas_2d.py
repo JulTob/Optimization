@@ -80,6 +80,33 @@ class DiagnosticoTests(unittest.TestCase):
         case.assertEqual(len(figura.axes), 4)
         case.assertIn("Pathfinder", figura.axes[3].get_title())
 
+    def test_especificacion_3d_interactiva(case):
+        import json
+        from Rampas.graficos import MODELOS_3D, especificacion_3d
+        muestras = {
+            nombre: (*muestra_2d(verdad, 40, 0.1, 0), verdad)
+            for nombre, verdad in ESTRUCTURAS.items()
+            }
+        especificacion = especificacion_3d(muestras, resolucion=12)
+        trazas = especificacion["data"]
+        case.assertEqual(len(trazas), len(muestras) * (len(MODELOS_3D) + 1))
+        #-- Una superficie por estructura y modelo, y una nube de datos por estructura.
+        botones = especificacion["layout"]["updatemenus"][0]["buttons"]
+        case.assertEqual(len(botones), len(muestras) * len(MODELOS_3D))
+        for boton in botones:
+            visibles = boton["args"][0]["visible"]
+            case.assertEqual(sum(visibles), 2)
+            #-- Cada opción enseña una superficie y los datos de su estructura.
+            elegidas = [traza for traza, ve in zip(trazas, visibles) if ve]
+            case.assertEqual({t["type"] for t in elegidas}, {"surface", "scatter3d"})
+            case.assertEqual(
+                elegidas[0]["name"].split(" · ")[0],
+                elegidas[1]["name"].split(" · ")[0],
+                )
+        case.assertEqual(sum(t["visible"] for t in trazas), 2)
+        json.dumps(especificacion)
+        #-- Serializable: Plotly la recibe tal cual.
+
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
         angulos = ajustar_tangentes(X, y).angulos_grados()
