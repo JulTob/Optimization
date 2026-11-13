@@ -118,7 +118,7 @@ def ajustar_tangentes(X, y, max_direcciones=6, fraccion_validacion=0.25, semilla
 
 
 # ---------------------------------------------------------------- Pathfinder
-def ajustar_pathfinder(X, y, pasos=None, umbral=None, n_barrido=45):
+def ajustar_pathfinder(X, y, pasos=None, umbral=0.0, n_barrido=45):
     """Pathfinder (ascenso de rampas): avanzar y escalar, una rampa por paso.
 
     Desde el origen del dominio normalizado, cada paso hace tres cosas:
@@ -136,14 +136,15 @@ def ajustar_pathfinder(X, y, pasos=None, umbral=None, n_barrido=45):
     Cada rampa nueva vale 0 por debajo de la posición desde la que se
     lanzó (componente a componente), así que lo ya recorrido no se toca.
 
-    Un paso se acepta si su mejora relativa supera el umbral ε, que está
-    SEPARADO de la búsqueda: con None se usa el estándar por longitud de
-    descripción (AIC), ε = 2·Δp/n = 8/n, porque cada paso añade Δp = 4
-    parámetros (ángulo, inicio, fin y peso). Cualquier aplicación puede
-    relajarlo o endurecerlo pasando su propio número; Rampas.ruido
-    ofrece alternativas (blancura, calibración) que se comparan en §4.
-    `pasos` limita los pasos (None: sin tope; acaba igual, porque los
-    nudos son los datos, finitos).
+    El Pathfinder itera HASTA QUEDARSE SIN NODOS: construye el
+    isotónico con camino, la representación completa de la estructura
+    monótona, no una aproximación. Con el umbral en 0 (el defecto) se
+    acepta todo paso que mejore el ajuste, y el camino termina cuando
+    nada por delante mejora. `umbral` admite una mejora relativa mínima
+    para quien quiera la variante regularizada (por ejemplo ε = 2·Δp/n
+    con Δp = 4: ángulo, inicio, fin y peso), y `pasos` limita los pasos
+    (None: sin tope; acaba igual, porque la posición avanza en cada
+    paso y los nudos son los datos, finitos).
 
     El modelo queda descrito por la base y los tramos (û_k, a_k, b_k)
     con sus pesos: la rampa k vale w_k · r((x·û_k − a_k)/(b_k − a_k)).
@@ -154,9 +155,6 @@ def ajustar_pathfinder(X, y, pasos=None, umbral=None, n_barrido=45):
         raise ValueError("y debe ser un vector finito no vacío.")
     if pasos is not None and (not isinstance(pasos, (int, np.integer)) or pasos < 1):
         raise ValueError("pasos debe ser un entero mayor o igual que 1, o None.")
-    if umbral is None:
-        umbral = 8.0 / len(y)
-        #-- AIC: 2·Δp/n con Δp = 4 (ángulo, inicio, fin y peso).
     umbral = float(umbral)
     if not np.isfinite(umbral) or umbral < 0:
         raise ValueError("umbral debe ser finito y no negativo.")
