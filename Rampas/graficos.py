@@ -70,13 +70,17 @@ def dibujar_diagnostico(diagnostico, X, y, verdad=None, resolucion=80):
 
 
 def _escribir_errores(eje, x, y, curva, malla, verdad):
-    """ECM de entrenamiento y, si se conoce, ECM frente a la verdad, en la esquina inferior derecha."""
-    lineas = [f"ECM entrenamiento: {np.mean((y - curva(x)) ** 2):.4f}"]
+    """Errores medios en la esquina inferior derecha.
+
+    ⟨|y − f̂(x)|²⟩    media con los datos de entrenamiento;
+    ⟨|f(x) − f̂(x)|²⟩  media frente a la verdad f, en todo el rango (si se conoce).
+    """
+    lineas = [rf"$\langle |y-\hat f(x)|^2 \rangle$ = {np.mean((y - curva(x)) ** 2):.4f}"]
     if verdad is not None:
-        lineas.append(f"ECM frente a la verdad: {np.mean((verdad(malla) - curva(malla)) ** 2):.4f}")
+        lineas.append(rf"$\langle |f(x)-\hat f(x)|^2 \rangle$ = {np.mean((verdad(malla) - curva(malla)) ** 2):.4f}")
     eje.text(
             0.97, 0.04, "\n".join(lineas),
-            transform=eje.transAxes, ha="right", va="bottom", fontsize=8,
+            transform=eje.transAxes, ha="right", va="bottom", fontsize=9,
             bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "lightgray"},
             )
 
