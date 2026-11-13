@@ -25,7 +25,7 @@ EXPLORADORES = {
 #-- Tangentes: aparece en la tabla de errores, fuera del concurso.
 
 
-def una_repeticion(verdad, semilla, n=150, sigma=0.1, n_prueba=3000):
+def una_repeticion(verdad, semilla, n=50, sigma=0.1, n_prueba=3000):
     X, y = muestra_2d(verdad, n, sigma, semilla)
     X_prueba, _ = muestra_2d(verdad, n_prueba, sigma, 10_000 + semilla)
     senal = verdad(X_prueba)
