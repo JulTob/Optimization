@@ -75,6 +75,10 @@ class DiagnosticoTests(unittest.TestCase):
         from Rampas.graficos import dibujar_datos_2d
         figura = dibujar_datos_2d(muestras, resolucion=40)
         case.assertIn("n = 80", figura.axes[0].get_title())
+        from Rampas.graficos import dibujar_superficies
+        figura = dibujar_superficies(X, z, verdad=ESTRUCTURAS["aditiva"], resolucion=15)
+        case.assertEqual(len(figura.axes), 4)
+        case.assertIn("Pathfinder", figura.axes[3].get_title())
 
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)

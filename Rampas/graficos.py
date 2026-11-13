@@ -246,3 +246,41 @@ def dibujar_datos_2d(muestras, resolucion=120):
         figura.colorbar(relleno, ax=eje, label="s, z")
     np.atleast_1d(ejes)[0].set_ylabel("y")
     return figura
+
+
+def dibujar_superficies(X, z, verdad=None, resolucion=40, vista=(30, -60)):
+    """Los cuatro modelos 2D como superficies, sobre los mismos datos.
+
+    Un panel 3D por modelo (Zigurat, Diana, Tangentes, Pathfinder): la
+    altura es la predicción f(x, y), y los datos z aparecen como puntos.
+    Todos los paneles comparten vista y escala vertical para que las
+    formas se comparen a simple vista: escalones rectos en Zigurat,
+    terrazas circulares en Diana, rampas oblicuas en Tangentes. Si se da
+    la señal, cada título lleva su error de señal ⟨|f − s|²⟩.
+    """
+    from .modelos_2d import (
+            ajustar_diana, ajustar_pathfinder, ajustar_tangentes, ajustar_zigurat,
+            )
+    modelos = [ajustar(X, z) for ajustar in (
+            ajustar_zigurat, ajustar_diana, ajustar_tangentes, ajustar_pathfinder,
+            )]
+    lado = np.linspace(0, 1, resolucion)
+    A, B = np.meshgrid(lado, lado)
+    puntos = np.column_stack([A.ravel(), B.ravel()])
+    alturas = [m.predecir(puntos).reshape(A.shape) for m in modelos]
+    abajo = min(float(np.min(z)), *(float(h.min()) for h in alturas))
+    arriba = max(float(np.max(z)), *(float(h.max()) for h in alturas))
+
+    figura = plt.figure(figsize=(4.2 * len(modelos), 4.2))
+    for k, (modelo, altura) in enumerate(zip(modelos, alturas)):
+        eje = figura.add_subplot(1, len(modelos), k + 1, projection="3d")
+        eje.plot_surface(A, B, altura, cmap="viridis", vmin=abajo, vmax=arriba,
+                         linewidth=0, antialiased=True, alpha=0.85)
+        eje.scatter(X[:, 0], X[:, 1], z, color="black", s=10, depthshade=False)
+        titulo = modelo.nombre
+        if verdad is not None:
+            error = float(np.mean((modelo.predecir(puntos) - verdad(puntos)) ** 2))
+            titulo += f"\n⟨|f − s|²⟩ = {error:.4f}"
+        eje.set(title=titulo, xlabel="x", ylabel="y", zlabel="z", zlim=(abajo, arriba))
+        eje.view_init(*vista)
+    return figura
