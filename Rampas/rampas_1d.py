@@ -118,46 +118,68 @@ def rampas_regularizadas(x, y, n_anchuras=4, penalizacion=1e-3):
     return ajustar_pesos(x, y, inicios, anchos, penalizacion)
 
 
-def rampas_por_division(x, y, n_rampas=None, n_particiones=5, semilla=0):
-    """Empieza con una rampa de min(x) a max(x) y la va partiendo donde más mejora.
+def rampas_por_division(x, y, profundidad=None, sensibilidad=0.05):
+    """Divide el dominio recursivamente hasta que partir deje de mejorar.
 
-    Cada paso prueba a partir cada rampa en cada nudo interior (no hace falta
-    que las partes sean iguales) y se queda con la mejor división.
-    Partir nunca empeora el entrenamiento, así que el número de rampas se
-    elige por VALIDACIÓN CRUZADA si no se da `n_rampas`.
+    Se empieza con una sola rampa, de min(x) a max(x). En cada intervalo
+    se busca el nudo interior que más reduce el error; si la mejora
+    relativa (sobre el error que queda) supera `sensibilidad` —por
+    defecto el 5%, por encima de lo que roba un corte que solo persigue
+    ruido—, el corte
+    se acepta y la búsqueda se repite dentro de [izquierda, corte] y de
+    [corte, derecha]. El número de rampas EMERGE de la búsqueda.
+
+    `profundidad` limita los niveles de recursión: el nivel k permite
+    hasta 2^k − 1 cortes. Con None no hay tope, y la recursión acaba
+    igualmente: los candidatos son los datos, finitos, y las mejoras se
+    agotan porque el error nunca baja del de la isotónica (§2.3).
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    if n_rampas is None:
-        n_rampas = _rampas_por_validacion(x, y, n_particiones, semilla)
-    return _camino_de_division(x, y, n_rampas)[-1]
+    if profundidad is not None and (
+            not isinstance(profundidad, (int, np.integer)) or profundidad < 1
+            ):
+        raise ValueError("profundidad debe ser un entero mayor o igual que 1, o None.")
+    sensibilidad = float(sensibilidad)
+    if not np.isfinite(sensibilidad) or sensibilidad <= 0:
+        raise ValueError("sensibilidad debe ser positiva.")
+
+    posiciones = np.unique(x)
+    if posiciones.size < 2:
+        raise ValueError("Hacen falta al menos dos valores de x distintos.")
+
+    cortes = [float(posiciones[0]), float(posiciones[-1])]
+    _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, sensibilidad)
+    return _ajustar_entre_cortes(x, y, sorted(cortes))
 
 
-def _camino_de_division(x, y, n_rampas):
-    """Ajustes con 1, 2, …, n_rampas rampas, cada uno partiendo el anterior."""
-    candidatos = list(np.unique(x))
-    cortes = [candidatos.pop(0), candidatos.pop()]
-    camino = [_ajustar_entre_cortes(x, y, cortes)]
-    while len(camino) < n_rampas and candidatos:
-        errores = [_error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes + [c]))) for c in candidatos]
-        cortes = sorted(cortes + [candidatos.pop(int(np.argmin(errores)))])
-        camino.append(_ajustar_entre_cortes(x, y, cortes))
-    return camino
+def _dividir(x, y, cortes, izquierda, derecha, profundidad, sensibilidad):
+    """Busca un corte dentro de (izquierda, derecha); si compensa, recurre."""
+    if profundidad is not None and profundidad < 1:
+        return
+    candidatos = [float(c) for c in np.unique(x) if izquierda < c < derecha]
+    if not candidatos:
+        return
 
+    error_actual = _error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes)))
+    if error_actual <= 0:
+        return
+        #-- Ajuste ya exacto: no hay nada que mejorar.
 
-def _rampas_por_validacion(x, y, n_particiones, semilla):
-    """Validación cruzada: cada dato valida una vez; se promedia el error por nº de rampas."""
-    orden = np.random.default_rng(semilla).permutation(len(x))
-    particiones = np.array_split(orden, n_particiones)
-    maximo = len(np.unique(x))
-    errores = np.zeros(maximo)
-    for val in particiones:
-        ent = np.setdiff1d(orden, val)
-        camino = _camino_de_division(x[ent], y[ent], maximo)
-        camino += [camino[-1]] * (maximo - len(camino))
-            #-- Si este reparto tiene menos nudos, el camino acaba antes: se repite el último.
-        errores += [_error(x[val], y[val], ajuste) for ajuste in camino]
-    return int(np.argmin(errores)) + 1
+    errores = [
+        _error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes + [c])))
+        for c in candidatos
+    ]
+    mejor = int(np.argmin(errores))
+    mejora = (error_actual - errores[mejor]) / error_actual
+    if mejora <= sensibilidad:
+        return
+
+    corte = candidatos[mejor]
+    cortes.append(corte)
+    siguiente = None if profundidad is None else profundidad - 1
+    _dividir(x, y, cortes, izquierda, corte, siguiente, sensibilidad)
+    _dividir(x, y, cortes, corte, derecha, siguiente, sensibilidad)
 
 
 def _ajustar_entre_cortes(x, y, cortes):

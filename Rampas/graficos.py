@@ -119,7 +119,7 @@ def dibujar_familias(x, y, verdad=None, titulo=""):
         "Rampas regularizadas": rampas_regularizadas(x, y),
         }
     por_division = rampas_por_division(x, y)
-    familias[f"Rampas por división (K = {len(por_division.pesos)}, validación)"] = por_division
+    familias[f"Rampas por división (K = {len(por_division.pesos)}, emergente)"] = por_division
     malla = np.linspace(np.min(x), np.max(x), 1000)
     figura, ejes = plt.subplots(2, 3, figsize=(15, 7), sharex=True, sharey=True, constrained_layout=True)
     for eje, (nombre, curva) in zip(ejes.ravel(), familias.items()):

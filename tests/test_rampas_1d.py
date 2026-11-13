@@ -118,15 +118,37 @@ class FamiliasTests(unittest.TestCase):
     def test_rampas_por_division(case):
         x, y = muestra()
         nudos = ajustar_isotonica(x, y)
-        errores = [np.sum((y - rampas_por_division(x, y, K)(x)) ** 2) for K in (1, 2, 5, len(nudos.posiciones))]
-        #-- Partir nunca empeora el entrenamiento, y al final es la isotónica lineal.
+        error_isotonica = np.sum((y - evaluar_nudos(nudos, x)) ** 2)
+
+        #-- Más profundidad nunca empeora el entrenamiento, y nunca baja de la isotónica.
+        errores = [
+            np.sum((y - rampas_por_division(x, y, profundidad=k, sensibilidad=1e-12)(x)) ** 2)
+            for k in (1, 2, 4)
+        ]
         case.assertTrue(all(a >= b - 1e-9 for a, b in zip(errores, errores[1:])))
-        case.assertAlmostEqual(errores[-1], np.sum((y - evaluar_nudos(nudos, x)) ** 2), places=8)
+        case.assertTrue(errores[-1] >= error_isotonica - 1e-9)
+
+        #-- Profundidad k: como mucho 2^k − 1 cortes, o sea 2^k rampas.
+        for k in (1, 2, 4):
+            ajuste = rampas_por_division(x, y, profundidad=k, sensibilidad=1e-12)
+            case.assertTrue(1 <= len(ajuste.pesos) <= 2 ** k)
+
         #-- Las rampas son contiguas: cada una empieza donde acaba la anterior.
-        ajuste = rampas_por_division(x, y, 5)
+        ajuste = rampas_por_division(x, y, profundidad=3)
         np.testing.assert_allclose(ajuste.inicios[1:], ajuste.inicios[:-1] + ajuste.anchos[:-1])
+
+        #-- Sin tope de profundidad, K emerge y se para antes de cortar todos los puntos.
         elegido = rampas_por_division(x, y)
         case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
+
+        #-- Sensibilidad extrema: exigir mejoras enormes deja la rampa única.
+        case.assertEqual(len(rampas_por_division(x, y, sensibilidad=10.0).pesos), 1)
+
+        #-- Determinista: dos llamadas idénticas, mismo resultado.
+        np.testing.assert_array_equal(
+            rampas_por_division(x, y).pesos,
+            rampas_por_division(x, y).pesos,
+            )
 
     def test_figura_de_familias_con_errores_legibles(case):
         import matplotlib
