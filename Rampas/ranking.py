@@ -94,6 +94,70 @@ def ranking_de_modelos(
     if not modelos:
         raise ValueError("Hace falta al menos un modelo.")
 
+    senal, test = _errores_por_repeticion(
+            s, bajo, alto, sigma, n, n_ajustes, n_pruebas, n_malla, semilla, modelos,
+            )
+    filas = []
+    for nombre in modelos:
+        filas.append({
+            "Modelo": nombre,
+            "Test (media)": test[nombre].mean(),
+            "Test (varianza)": test[nombre].var(ddof=1),
+            "Señal (media)": senal[nombre].mean(),
+            "Señal (varianza)": senal[nombre].var(ddof=1),
+            "Ajustes fallidos": int(senal[nombre].isna().sum()),
+        })
+    tabla = pd.DataFrame(filas).set_index("Modelo")
+    return tabla.sort_values("Señal (media)", na_position="last")
+
+
+def tabla_de_victorias(
+        s, bajo, alto, sigma,
+        n=25,
+        n_ajustes=10,
+        n_malla=500,
+        semilla=0,
+        modelos=None,
+        ):
+    """Tabla de victorias: puesto de cada modelo, repetición a repetición.
+
+    En cada repetición los modelos se ordenan por su error de señal
+    ⟨|f(x) − s(x)|²⟩ (el ajuste a la señal generadora, sin ruido de
+    prueba). La tabla da las VICTORIAS (veces en el puesto 1), el
+    puesto medio, el mejor y el peor, y se ordena por puesto medio.
+    Un ajuste fallido no puntúa en su repetición.
+    """
+    if modelos is None:
+        modelos = {**catalogo_de_rampas(), **catalogo_de_referencias()}
+    senal, _ = _errores_por_repeticion(
+            s, bajo, alto, sigma, n, n_ajustes, 2, n_malla, semilla, modelos,
+            )
+    puestos = senal.rank(axis=1, method="min")
+    #-- Puesto 1 = menor error de señal en esa repetición; los empates
+    #-- comparten el mejor puesto.
+    filas = []
+    for nombre in modelos:
+        filas.append({
+            "Modelo": nombre,
+            "Victorias": int((puestos[nombre] == 1).sum()),
+            "Puesto medio": puestos[nombre].mean(),
+            "Mejor": puestos[nombre].min(),
+            "Peor": puestos[nombre].max(),
+        })
+    tabla = pd.DataFrame(filas).set_index("Modelo")
+    return tabla.sort_values("Puesto medio", na_position="last")
+
+
+def _errores_por_repeticion(
+        s, bajo, alto, sigma, n, n_ajustes, n_pruebas, n_malla, semilla, modelos,
+        ):
+    """Errores por repetición, con las MISMAS muestras para todos los modelos.
+
+    Devuelve dos tablas con una columna por modelo: la de señal (una
+    fila por ajuste: ⟨|f − s|²⟩ sobre la malla) y la de test (una fila
+    por muestra de prueba: ⟨|y − f(x)|²⟩). Un ajuste fallido deja NaN
+    en sus filas.
+    """
     generador = np.random.default_rng(semilla)
     entrenamientos = [
         muestra_1d(s, bajo, alto, sigma, n, generador)
@@ -107,42 +171,22 @@ def ranking_de_modelos(
     #-- todos comparan exactamente sobre las mismas.
 
     malla = np.linspace(bajo, alto, n_malla)
-    senal = np.asarray(s(malla), dtype=float)
+    senal_en_malla = np.asarray(s(malla), dtype=float)
 
-    filas = []
+    senal = pd.DataFrame(index=range(n_ajustes), columns=list(modelos), dtype=float)
+    test = pd.DataFrame(
+            index=range(n_ajustes * n_pruebas), columns=list(modelos), dtype=float,
+            )
     for nombre, ajustar in modelos.items():
-        errores_test = []
-        errores_senal = []
-        fallos = 0
-        for (x, y), muestras_de_prueba in zip(entrenamientos, pruebas):
+        for repeticion, ((x, y), muestras_de_prueba) in enumerate(zip(entrenamientos, pruebas)):
             try:
                 f = ajustar(x, y)
             except (ValueError, RuntimeError):
-                fallos += 1
                 continue
-            errores_senal.append(float(np.mean((f(malla) - senal) ** 2)))
-            for x_prueba, y_prueba in muestras_de_prueba:
-                errores_test.append(float(np.mean((y_prueba - f(x_prueba)) ** 2)))
-        filas.append({
-            "Modelo": nombre,
-            "Test (media)": _media(errores_test),
-            "Test (varianza)": _varianza(errores_test),
-            "Señal (media)": _media(errores_senal),
-            "Señal (varianza)": _varianza(errores_senal),
-            "Ajustes fallidos": fallos,
-        })
-
-    tabla = pd.DataFrame(filas).set_index("Modelo")
-    return tabla.sort_values("Señal (media)", na_position="last")
-
-
-def _media(valores):
-    if not valores:
-        return float("nan")
-    return float(np.mean(valores))
-
-
-def _varianza(valores):
-    if len(valores) < 2:
-        return float("nan")
-    return float(np.var(valores, ddof=1))
+                #-- El fallo queda como NaN: no puntúa ni promedia.
+            senal.loc[repeticion, nombre] = float(np.mean((f(malla) - senal_en_malla) ** 2))
+            for indice, (x_prueba, y_prueba) in enumerate(muestras_de_prueba):
+                test.loc[repeticion * n_pruebas + indice, nombre] = float(
+                        np.mean((y_prueba - f(x_prueba)) ** 2)
+                        )
+    return senal, test

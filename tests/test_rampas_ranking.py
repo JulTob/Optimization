@@ -10,7 +10,12 @@ from Rampas.referencias import (
     ajustar_potencia,
     catalogo_de_referencias,
 )
-from Rampas.ranking import catalogo_de_rampas, muestra_1d, ranking_de_modelos
+from Rampas.ranking import (
+    catalogo_de_rampas,
+    muestra_1d,
+    ranking_de_modelos,
+    tabla_de_victorias,
+)
 
 
 class Referencias(unittest.TestCase):
@@ -107,6 +112,35 @@ class Ranking(unittest.TestCase):
         case.assertTrue(np.isnan(tabla.loc["Roto", "Señal (media)"]))
         case.assertEqual(tabla.index[-1], "Roto")
         #-- Los NaN van al final del ranking.
+
+    def test_tabla_de_victorias(case):
+        tabla = tabla_de_victorias(
+            np.sqrt, 1.0, 6.0, sigma=0.1,
+            n=15, n_ajustes=4, n_malla=50,
+            semilla=1, modelos=case.modelos_rapidos(),
+            )
+        case.assertEqual(
+            list(tabla.columns), ["Victorias", "Puesto medio", "Mejor", "Peor"],
+            )
+        puestos = tabla["Puesto medio"].to_numpy()
+        case.assertTrue(np.all(np.diff(puestos) >= 0))
+        case.assertTrue((tabla["Mejor"] <= tabla["Peor"]).all())
+        case.assertEqual(int(tabla["Victorias"].sum()), 4)
+        #-- Una victoria por repetición (sin empates de coma flotante).
+
+    def test_un_modelo_roto_no_puntua(case):
+        def siempre_falla(x, y):
+            raise ValueError("ajuste imposible")
+
+        tabla = tabla_de_victorias(
+            np.sqrt, 1.0, 6.0, sigma=0.1,
+            n=15, n_ajustes=3, n_malla=50, semilla=1,
+            modelos={ "Roto": siempre_falla,
+                      "Recta": catalogo_de_referencias()["Recta"] },
+            )
+        case.assertEqual(int(tabla.loc["Roto", "Victorias"]), 0)
+        case.assertTrue(np.isnan(tabla.loc["Roto", "Puesto medio"]))
+        case.assertEqual(tabla.index[-1], "Roto")
 
     def test_muestra_usa_el_dominio(case):
         generador = np.random.default_rng(0)
