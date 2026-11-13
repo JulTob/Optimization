@@ -121,9 +121,9 @@ class FamiliasTests(unittest.TestCase):
         error_isotonica = np.sum((y - evaluar_nudos(nudos, x)) ** 2)
 
         #-- Más profundidad nunca empeora el entrenamiento, y nunca baja de la isotónica.
-        #-- Con confianza mínima el umbral es ~0 y la división llega lo más lejos posible.
+        #-- Con banda muy negativa todo residuo "tiene color" y la división llega lo más lejos posible.
         errores = [
-            np.sum((y - rampas_por_division(x, y, profundidad=k, confianza=1e-9)(x)) ** 2)
+            np.sum((y - rampas_por_division(x, y, profundidad=k, banda=-10.0)(x)) ** 2)
             for k in (1, 2, 4)
         ]
         case.assertTrue(all(a >= b - 1e-9 for a, b in zip(errores, errores[1:])))
@@ -131,7 +131,7 @@ class FamiliasTests(unittest.TestCase):
 
         #-- Profundidad k: como mucho 2^k − 1 cortes, o sea 2^k rampas.
         for k in (1, 2, 4):
-            ajuste = rampas_por_division(x, y, profundidad=k, confianza=1e-9)
+            ajuste = rampas_por_division(x, y, profundidad=k, banda=-10.0)
             case.assertTrue(1 <= len(ajuste.pesos) <= 2 ** k)
 
         #-- Las rampas son contiguas: cada una empieza donde acaba la anterior.
@@ -142,13 +142,13 @@ class FamiliasTests(unittest.TestCase):
         elegido = rampas_por_division(x, y)
         case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
 
-        #-- Más confianza exige mejoras mayores: nunca salen más rampas.
-        exigente = rampas_por_division(x, y, confianza=1 - 1e-12)
+        #-- Una banda más ancha declara blanco antes: nunca salen más rampas.
+        exigente = rampas_por_division(x, y, banda=10.0)
         case.assertTrue(len(exigente.pesos) <= len(elegido.pesos))
 
-        #-- La confianza debe estar entre 0 y 1 (abiertos).
+        #-- La banda debe ser finita.
         with case.assertRaises(ValueError):
-            rampas_por_division(x, y, confianza=1.0)
+            rampas_por_division(x, y, banda=float("inf"))
 
         #-- Determinista: dos llamadas idénticas, mismo resultado.
         np.testing.assert_array_equal(

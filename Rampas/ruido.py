@@ -1,31 +1,60 @@
-"""Estimación del ruido y calibración del umbral de parada.
+"""Ruido, blancura y umbrales: los criterios de parada.
 
-¿Cuándo deja de merecer la pena añadir una rampa? Cuando su mejora es
-la que se conseguiría ajustando ruido puro. Para saber cuánto es eso
-no se supone ninguna distribución: se mide en los propios datos.
+CRITERIO BASE — BLANCURA DEL RESIDUO (señales y sistemas). Un modelo
+ha extraído toda la estructura cuando su residuo es ruido blanco: su
+autocorrelación es una delta. Si queda estructura monótona por
+capturar, los residuos vecinos se parecen y la autocorrelación a
+retardo 1 sale positiva; si solo queda ruido, cae dentro de la banda
+±banda/√n, que se calcula del tamaño de la muestra, en forma cerrada,
+sin suponer la distribución del ruido (banda = 2 equivale a dos
+desviaciones típicas de ρ₁ bajo blancura, ≈ 95%). La búsqueda sigue
+mientras el residuo tenga color y se detiene cuando es blanco.
 
-1. MUESTRAS DEL RUIDO. Con el vecino más cercano en X, la diferencia
-   d = (y_i − y_vecino)/√2 es casi puro ruido: dos observaciones casi
-   iguales en X comparten casi la misma señal, que se cancela en la
-   resta (por eso la varianza de y a secas no sirve: mezcla señal y
-   ruido). Las d_i llevan la distribución real del ruido — sus colas,
-   su escala — sin postular que sea gaussiana.
+ALTERNATIVAS, conservadas para compararlas como resultado (§4):
+- umbral_de_mejora: atajo gaussiano χ²₁(confianza)·σ̂², que supone
+  ruido normal e ignora que la búsqueda elige el mejor candidato.
+- calibrar_umbral: remuestrea el ruido de los propios datos y ejecuta
+  la búsqueda real sobre él; exacto y libre de distribución, pero
+  simulado en vez de cerrado.
 
-2. CALIBRACIÓN POR REMUESTREO (bootstrap). Se fabrican vectores de
-   ruido puro remuestreando las d_i con reemplazo, se ejecuta sobre
-   cada uno UN PASO DE LA PROPIA BÚSQUEDA, y el umbral es el cuantil
-   `confianza` (estándar: 95%) de lo que la búsqueda robó. Así el
-   umbral incorpora, sin fórmulas, el tamaño efectivo de la búsqueda
-   (el máximo entre muchos candidatos correlacionados roba más que un
-   candidato suelto) y vale en cualquier dimensión. Se calcula UNA
-   SOLA VEZ, antes de la búsqueda.
-
-Para ruido gaussiano existe el atajo clásico χ²₁(confianza)·σ̂²
-(`umbral_de_mejora`), que ignora el tamaño de la búsqueda; la
-calibración lo sustituye como criterio base.
+El ruido se mide SIEMPRE en y; X solo decide quién es vecino de quién:
+dos observaciones casi iguales en X comparten casi la misma señal, que
+se cancela en la resta (la varianza de y a secas mezcla señal y ruido).
 """
 import numpy as np
 from scipy.stats import chi2
+
+def autocorrelacion_primera(residuos):
+    """ρ₁ = Σ eᵢ·eᵢ₊₁ / Σ eᵢ², con los residuos en su orden espacial."""
+    residuos = np.asarray(residuos, dtype=float)
+    if residuos.ndim != 1 or residuos.size < 2:
+        raise ValueError("Hacen falta al menos 2 residuos en un vector.")
+    if not np.all(np.isfinite(residuos)):
+        raise ValueError("Los residuos deben ser finitos.")
+    residuos = residuos - residuos.mean()
+    energia = float(residuos @ residuos)
+    if energia <= 0.0:
+        return 0.0
+        #-- Residuo idénticamente nulo: tan blanco como se puede ser.
+    return float(residuos[:-1] @ residuos[1:]) / energia
+
+
+def es_blanco(residuos, banda=2.0):
+    """¿Es el residuo ruido blanco? ρ₁ ≤ banda/√n.
+
+    La prueba es de un solo lado: la estructura monótona que una rampa
+    puede capturar deja ρ₁ POSITIVA (residuos vecinos parecidos); una
+    ρ₁ muy negativa sería sobreajuste, que tampoco pide más rampas.
+    Con menos de 4 residuos no hay color que medir: se declara blanco.
+    """
+    banda = float(banda)
+    if not np.isfinite(banda):
+        raise ValueError("banda debe ser finita.")
+    residuos = np.asarray(residuos, dtype=float)
+    if residuos.size < 4:
+        return True
+    return autocorrelacion_primera(residuos) <= banda / np.sqrt(residuos.size)
+
 
 REMUESTRAS = 50
 #-- Repeticiones de la calibración: su cuantil 95 es grueso pero

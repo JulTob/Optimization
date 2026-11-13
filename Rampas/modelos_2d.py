@@ -12,7 +12,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear, minimize_scalar
 from .dominio import Escala
-from .ruido import calibrar_umbral
+from .ruido import es_blanco
 from .isotonica import Nudos, ajustar_isotonica, evaluar_nudos
 from .aditivo import (
         Componente, ajustar_componente, direccion, eje, radio, retroajustar, sumar,
@@ -119,29 +119,30 @@ def ajustar_tangentes(X, y, max_direcciones=6, fraccion_validacion=0.25, semilla
 
 
 # ---------------------------------------------------------------- Pathfinder
-def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
+def ajustar_pathfinder(X, y, pasos=None, banda=2.0, n_barrido=45):
     """Pathfinder (ascenso de rampas): avanzar y escalar, una rampa por paso.
 
-    Desde el origen del dominio normalizado, cada paso hace tres cosas:
+    Desde el origen del dominio normalizado, cada paso hace cuatro cosas:
 
     1. Elige la dirección de mejor crecimiento isotónico del residuo,
        como en Tangentes (el isotónico ve toda la estructura).
-    2. Sobre esa dirección busca el tramo [a, b] cuya rampa sola más
-       reduce el residuo, con a por delante de la posición actual:
-       el pathfinder puede CAMINAR por el llano (de la posición hasta a,
-       sin subir) antes de ESCALAR (de a a b).
-    3. Reajusta la base y todos los pesos juntos (mínimos cuadrados con
+    2. Comprueba la BLANCURA del residuo por delante de la posición,
+       ordenado en esa dirección: si es ruido blanco (autocorrelación a
+       retardo 1 dentro de la banda banda/√n; Rampas.ruido), no queda
+       estructura que escalar y el camino termina. Es el mismo criterio
+       de parada que rampas por división.
+    3. Si queda color, el paso es el PRIMER TRAMO DE SUBIDA del
+       isotónico por delante: el primer nodo del camino. El pathfinder
+       puede CAMINAR por el llano (de la posición hasta a, sin subir)
+       antes de ESCALAR (de a a b).
+    4. Reajusta la base y todos los pesos juntos (mínimos cuadrados con
        pesos ≥ 0, §2.3) y avanza la posición al punto de saturación.
 
     Cada rampa nueva vale 0 por debajo de la posición desde la que se
-    lanzó (componente a componente), así que lo ya recorrido no se toca.
-    Un paso se acepta si su mejora supera el UMBRAL DE RUIDO: lo que
-    esta misma búsqueda le saca a ruido puro, al nivel de confianza
-    dado. El umbral se calibra UNA VEZ, antes de la búsqueda,
-    remuestreando el ruido de los propios datos (Rampas.ruido: sin
-    suponerle ninguna distribución): el mismo criterio de parada que
-    rampas por división. `pasos` lo limita (None: sin tope; acaba
-    igual, porque los nudos son los datos, finitos).
+    lanzó (componente a componente), así que lo ya recorrido no se
+    toca. `pasos` limita los pasos (None: sin tope; el camino acaba
+    igual, porque avanza en cada paso y los nudos son los datos,
+    finitos).
 
     El modelo queda descrito por la base y los tramos (û_k, a_k, b_k)
     con sus pesos: la rampa k vale w_k · r((x·û_k − a_k)/(b_k − a_k)).
@@ -152,46 +153,40 @@ def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
         raise ValueError("y debe ser un vector finito no vacío.")
     if pasos is not None and (not isinstance(pasos, (int, np.integer)) or pasos < 1):
         raise ValueError("pasos debe ser un entero mayor o igual que 1, o None.")
+    banda = float(banda)
+    if not np.isfinite(banda):
+        raise ValueError("banda debe ser finita.")
 
     escala = Escala.de_los_datos(X)
     Z = escala(X)
     if len(Z) != len(y):
         raise ValueError("X e y deben tener el mismo número de datos.")
-    def robo_de_un_paso(entradas, ruido):
-        return _robo_de_un_paso(entradas, ruido, n_barrido)
-
-    umbral = calibrar_umbral(Z, y, robo_de_un_paso, confianza)
 
     posicion = np.zeros(2)
     tramos = []         #-- (ángulo, inicio, fin) de cada rampa aceptada, en orden.
     pesos = np.zeros(0)
     base = float(np.mean(y))
-    error_actual = float(np.sum((y - base) ** 2))
 
     while pasos is None or len(tramos) < pasos:
-        if error_actual <= 0:
-            break
-            #-- Ajuste ya exacto: no hay nada que mejorar.
         residuo = y - _evaluar_pathfinder(Z, base, tramos, pesos)
-        paso = _paso_mas_cercano(
-                Z, residuo, posicion, error_actual, umbral, n_barrido,
-                )
-        if paso is None:
+        angulo = mejor_angulo(Z, residuo, n_barrido)
+        rumbo = _rumbo(angulo)
+        proyectados = Z @ rumbo
+        por_delante = proyectados > float(posicion @ rumbo) + 1e-12
+        if not np.any(por_delante):
             break
-            #-- Nada sube por delante de la posición: fin del camino.
-        angulo = paso[0]
-        candidatos = tramos + [paso]
-        base_nueva, pesos_nuevos = _pesos_del_pathfinder(Z, y, candidatos)
-        error_nuevo = float(np.sum(
-                (y - _evaluar_pathfinder(Z, base_nueva, candidatos, pesos_nuevos)) ** 2
-                ))
-        if error_actual - error_nuevo <= umbral:
+            #-- Ningún dato por delante de la posición: fin del camino.
+        orden = np.argsort(proyectados[por_delante])
+        if es_blanco(residuo[por_delante][orden], banda):
             break
-            #-- La mejora no supera lo que robaría el ruido: punto estable.
-        tramos, base, pesos, error_actual = (
-                candidatos, base_nueva, pesos_nuevos, error_nuevo
-                )
-        posicion = posicion + (paso[2] - float(posicion @ _rumbo(angulo))) * _rumbo(angulo)
+            #-- Blanco incluso en la mejor dirección: no queda estructura.
+        tramo = _primera_subida(proyectados[por_delante], residuo[por_delante])
+        if tramo is None:
+            break
+            #-- El isotónico de delante es plano: nada que escalar.
+        tramos = tramos + [(float(angulo),) + tramo]
+        base, pesos = _pesos_del_pathfinder(Z, y, tramos)
+        posicion = posicion + (tramo[1] - float(posicion @ rumbo)) * rumbo
         #-- La posición salta al punto de saturación de la rampa nueva.
 
     return Modelo2D("Pathfinder", escala, _componentes_del_pathfinder(base, tramos, pesos))
@@ -227,64 +222,25 @@ def _rumbo(angulo):
     return np.array([np.cos(angulo), np.sin(angulo)])
 
 
-def _robo_de_un_paso(Z, ruido, n_barrido=45):
-    """Un paso del Pathfinder sobre ruido puro: cuánto error elimina.
-    Es la búsqueda real, usada para calibrar su umbral."""
-    base = float(np.mean(ruido))
-    error_base = float(np.sum((ruido - base) ** 2))
-    if error_base <= 0:
-        return 0.0
-    paso = _paso_mas_cercano(
-            Z, ruido - base, np.zeros(Z.shape[1]), error_base, np.inf, n_barrido,
-            )
-    if paso is None:
-        return 0.0
-    base_nueva, pesos = _pesos_del_pathfinder(Z, ruido, [paso])
-    return error_base - float(np.sum(
-            (ruido - _evaluar_pathfinder(Z, base_nueva, [paso], pesos)) ** 2
-            ))
+def _primera_subida(proyectados, residuo):
+    """El primer tramo [a, b] donde el isotónico del residuo sube.
 
-
-def _paso_mas_cercano(Z, residuo, posicion, error_actual, umbral, n_barrido):
-    """El paso MÍNIMO aceptable: avanzar poco y reevaluar, como en el
-    ascenso por gradiente.
-
-    La dirección es la de mejor crecimiento isotónico del residuo (el
-    isotónico ve toda la estructura, no solo lo que hace una rampa).
-    El tramo arranca donde el isotónico de los datos de delante empieza
-    a subir, y acaba en el candidato MÁS CERCANO cuya rampa ya supera
-    el umbral de ruido. El paso glotón (el mejor tramo
-    posible) saltaría lejos y dejaría atrás, irrecuperable, lo no
-    explicado; el paso mínimo deja que el camino se adapte.
+    Es el «primer nodo» del camino: el paso más cercano, no el mejor
+    posible. El paso glotón saltaría lejos y dejaría atrás,
+    irrecuperable, lo no explicado; el paso mínimo deja que el camino
+    se adapte, como en el ascenso por gradiente.
     """
-    angulo = mejor_angulo(Z, residuo, n_barrido)
-    proyectados = Z @ _rumbo(angulo)
-    por_delante = proyectados > float(posicion @ _rumbo(angulo)) + 1e-12
-    if not np.any(por_delante):
+    nudos = ajustar_isotonica(proyectados, residuo)
+    sube = np.diff(nudos.niveles) > 1e-12
+    arranques = np.nonzero(sube)[0]
+    if arranques.size == 0:
         return None
-
-    nudos = ajustar_isotonica(proyectados[por_delante], residuo[por_delante])
-    subidas = np.nonzero(np.diff(nudos.niveles) > 1e-12)[0]
-    if subidas.size == 0:
-        return None
-        #-- El residuo de delante es plano: no hay nada que escalar.
-    inicio = float(nudos.posiciones[subidas[0]])
-
-    mejor_fin, mejor_error = None, np.inf
-    for fin in np.unique(proyectados[proyectados > inicio + 1e-12]):
-        rampa = np.clip((proyectados - inicio) / (fin - inicio), 0.0, 1.0)
-        peso = max(0.0, float(rampa @ residuo) / float(rampa @ rampa))
-        error = float(np.sum((residuo - peso * rampa) ** 2))
-        if error < mejor_error:
-            mejor_fin, mejor_error = float(fin), error
-        if error_actual - error > umbral:
-            return (float(angulo), inicio, float(fin))
-            #-- Primer candidato que ya supera al ruido: paso mínimo.
-    if mejor_fin is None:
-        return None
-    return (float(angulo), inicio, mejor_fin)
-    #-- Ningún fin llega solo al umbral: se propone el mejor y el
-    #-- reajuste conjunto del bucle principal da el veredicto.
+    inicio = int(arranques[0])
+    fin = inicio + 1
+    while fin < len(sube) and sube[fin]:
+        fin += 1
+        #-- La subida sigue mientras los niveles crezcan seguidos.
+    return (float(nudos.posiciones[inicio]), float(nudos.posiciones[fin]))
 
 
 def _rampa_del_tramo(Z, tramo):
