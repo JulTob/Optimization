@@ -114,6 +114,12 @@ class DiagnosticoTests(unittest.TestCase):
         #-- Cuatro modelos (tres hipótesis y el Pathfinder) por tres estructuras.
         case.assertIn("Tangentes · radial", tabla.index)
         case.assertTrue(np.all(np.diff(tabla["Señal (media)"].to_numpy()) >= 0))
+        from Rampas.experimento import separar_por_estructura
+        partes = separar_por_estructura(tabla)
+        case.assertEqual(set(partes), set(ESTRUCTURAS))
+        for parte in partes.values():
+            case.assertEqual(set(parte.index), {"Zigurat", "Diana", "Tangentes", "Pathfinder"})
+            case.assertTrue(np.all(np.diff(parte["Señal (media)"].to_numpy()) >= 0))
 
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)

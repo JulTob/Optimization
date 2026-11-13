@@ -91,3 +91,22 @@ def ranking_2d(repeticiones=10, n=50, sigma=0.1, n_prueba=3000):
             })
     tabla = pd.DataFrame(filas).set_index("Modelo · estructura")
     return tabla.sort_values("Señal (media)")
+
+
+def separar_por_estructura(tabla):
+    """Parte el ranking de `ranking_2d` en un ranking por estructura.
+
+    Devuelve un diccionario estructura → tabla, con los modelos como
+    filas y el mismo orden por error de señal. No recalcula nada: solo
+    reorganiza la tabla conjunta, así que se comparan modelos frente a
+    la misma señal, sin mezclar la dificultad de estructuras distintas.
+    """
+    partes = {}
+    for estructura in ESTRUCTURAS:
+        sufijo = f" · {estructura}"
+        filas = [indice for indice in tabla.index if indice.endswith(sufijo)]
+        parte = tabla.loc[filas].copy()
+        parte.index = [indice[: -len(sufijo)] for indice in filas]
+        parte.index.name = "Modelo"
+        partes[estructura] = parte.sort_values("Señal (media)")
+    return partes
