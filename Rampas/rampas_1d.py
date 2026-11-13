@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear
 from .senales import matriz_de_rampas
-from .ruido import umbral_de_mejora, varianza_del_ruido_1d
+from .ruido import umbral_de_mejora, varianza_del_ruido
 
 
 @dataclass(frozen=True)
@@ -147,7 +147,7 @@ def rampas_por_division(x, y, profundidad=None, confianza=0.95):
     if posiciones.size < 2:
         raise ValueError("Hacen falta al menos dos valores de x distintos.")
 
-    umbral = umbral_de_mejora(varianza_del_ruido_1d(x, y), confianza)
+    umbral = umbral_de_mejora(varianza_del_ruido(x, y), confianza)
     cortes = [float(posiciones[0]), float(posiciones[-1])]
     _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, umbral)
     return _ajustar_entre_cortes(x, y, sorted(cortes))

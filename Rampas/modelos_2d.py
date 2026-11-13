@@ -12,7 +12,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear, minimize_scalar
 from .dominio import Escala
-from .ruido import umbral_de_mejora, varianza_del_ruido_2d
+from .ruido import umbral_de_mejora, varianza_del_ruido
 from .isotonica import Nudos, ajustar_isotonica, evaluar_nudos
 from .aditivo import (
         Componente, ajustar_componente, direccion, eje, radio, retroajustar, sumar,
@@ -156,7 +156,7 @@ def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
     Z = escala(X)
     if len(Z) != len(y):
         raise ValueError("X e y deben tener el mismo número de datos.")
-    umbral = umbral_de_mejora(varianza_del_ruido_2d(Z, y), confianza)
+    umbral = umbral_de_mejora(varianza_del_ruido(Z, y), confianza)
 
     posicion = np.zeros(2)
     tramos = []         #-- (ángulo, inicio, fin) de cada rampa aceptada, en orden.
