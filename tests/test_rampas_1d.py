@@ -121,8 +121,9 @@ class FamiliasTests(unittest.TestCase):
         error_isotonica = np.sum((y - evaluar_nudos(nudos, x)) ** 2)
 
         #-- Más profundidad nunca empeora el entrenamiento, y nunca baja de la isotónica.
+        #-- Con confianza mínima el umbral es ~0 y la división llega lo más lejos posible.
         errores = [
-            np.sum((y - rampas_por_division(x, y, profundidad=k, sensibilidad=1e-12)(x)) ** 2)
+            np.sum((y - rampas_por_division(x, y, profundidad=k, confianza=1e-9)(x)) ** 2)
             for k in (1, 2, 4)
         ]
         case.assertTrue(all(a >= b - 1e-9 for a, b in zip(errores, errores[1:])))
@@ -130,7 +131,7 @@ class FamiliasTests(unittest.TestCase):
 
         #-- Profundidad k: como mucho 2^k − 1 cortes, o sea 2^k rampas.
         for k in (1, 2, 4):
-            ajuste = rampas_por_division(x, y, profundidad=k, sensibilidad=1e-12)
+            ajuste = rampas_por_division(x, y, profundidad=k, confianza=1e-9)
             case.assertTrue(1 <= len(ajuste.pesos) <= 2 ** k)
 
         #-- Las rampas son contiguas: cada una empieza donde acaba la anterior.
@@ -141,8 +142,13 @@ class FamiliasTests(unittest.TestCase):
         elegido = rampas_por_division(x, y)
         case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
 
-        #-- Sensibilidad extrema: exigir mejoras enormes deja la rampa única.
-        case.assertEqual(len(rampas_por_division(x, y, sensibilidad=10.0).pesos), 1)
+        #-- Más confianza exige mejoras mayores: nunca salen más rampas.
+        exigente = rampas_por_division(x, y, confianza=1 - 1e-12)
+        case.assertTrue(len(exigente.pesos) <= len(elegido.pesos))
+
+        #-- La confianza debe estar entre 0 y 1 (abiertos).
+        with case.assertRaises(ValueError):
+            rampas_por_division(x, y, confianza=1.0)
 
         #-- Determinista: dos llamadas idénticas, mismo resultado.
         np.testing.assert_array_equal(

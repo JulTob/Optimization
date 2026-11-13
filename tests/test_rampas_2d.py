@@ -6,8 +6,8 @@ import numpy as np
 from Rampas.estructuras import ANGULO_VERDADERO, ESTRUCTURAS, muestra_2d
 from Rampas.experimento import EQUIVALENTE, una_repeticion
 from Rampas.modelos_2d import (
-        ajustar_ascenso, ajustar_diana, ajustar_tangentes, ajustar_zigurat,
-        camino_del_ascenso,
+        ajustar_pathfinder, ajustar_diana, ajustar_tangentes, ajustar_zigurat,
+        camino_del_pathfinder,
         )
 
 
@@ -16,7 +16,7 @@ class MonotoniaTests(unittest.TestCase):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 120, 0.1, 0)
         lado = np.linspace(0, 1, 40)
         malla = np.stack(np.meshgrid(lado, lado), -1)
-        for ajustar in (ajustar_zigurat, ajustar_diana, ajustar_tangentes, ajustar_ascenso):
+        for ajustar in (ajustar_zigurat, ajustar_diana, ajustar_tangentes, ajustar_pathfinder):
             modelo = ajustar(X, y)
             puntos = modelo.escala.minimo + modelo.escala.rango * malla
             valores = modelo.predecir(puntos.reshape(-1, 2)).reshape(40, 40)
@@ -31,35 +31,37 @@ class MonotoniaTests(unittest.TestCase):
 
 
 class DiagnosticoTests(unittest.TestCase):
-    def test_ascenso_recupera_la_direccion(case):
+    def test_pathfinder_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
-        angulos = ajustar_ascenso(X, y).angulos_grados()
+        angulos = ajustar_pathfinder(X, y).angulos_grados()
         case.assertTrue(any(abs(a - np.degrees(ANGULO_VERDADERO)) <= 8 for a in angulos))
 
-    def test_el_camino_del_ascenso_es_creciente(case):
+    def test_el_camino_del_pathfinder_es_creciente(case):
         X, y = muestra_2d(ESTRUCTURAS["radial"], 150, 0.1, 0)
-        camino = camino_del_ascenso(ajustar_ascenso(X, y))
+        camino = camino_del_pathfinder(ajustar_pathfinder(X, y))
         np.testing.assert_array_equal(camino[0], [0.0, 0.0])
         case.assertGreaterEqual(np.diff(camino, axis=0).min(), -1e-9)
             #-- Cada tramo avanza: nunca se retrocede en ninguna coordenada.
 
-    def test_ascenso_con_datos_planos_da_una_constante(case):
+    def test_pathfinder_con_datos_planos_da_una_constante(case):
         generador = np.random.default_rng(0)
         X = generador.uniform(0, 1, (40, 2))
         y = np.full(40, 3.0)
-        modelo = ajustar_ascenso(X, y)
+        modelo = ajustar_pathfinder(X, y)
         np.testing.assert_allclose(modelo.predecir(X), 3.0)
-        case.assertEqual(len(camino_del_ascenso(modelo)), 1)
+        case.assertEqual(len(camino_del_pathfinder(modelo)), 1)
             #-- Sin nada que escalar, el camino se queda en el origen.
 
-    def test_ascenso_rechaza_entradas_invalidas(case):
+    def test_pathfinder_rechaza_entradas_invalidas(case):
         X, y = muestra_2d(ESTRUCTURAS["radial"], 30, 0.1, 0)
         with case.assertRaises(ValueError):
-            ajustar_ascenso(X, y, pasos=0)
+            ajustar_pathfinder(X, y, pasos=0)
         with case.assertRaises(ValueError):
-            ajustar_ascenso(X, y, sensibilidad=0.0)
+            ajustar_pathfinder(X, y, confianza=0.0)
         with case.assertRaises(ValueError):
-            ajustar_ascenso(X, y[:-1])
+            ajustar_pathfinder(X, y, confianza=1.0)
+        with case.assertRaises(ValueError):
+            ajustar_pathfinder(X, y[:-1])
 
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
@@ -72,7 +74,8 @@ class DiagnosticoTests(unittest.TestCase):
             ganadores = []
             for semilla in range(3):
                 errores, _ = una_repeticion(verdad, semilla)
-                ganadores.append(min(errores, key=errores.get))
+                ganadores.append(min(EQUIVALENTE.values(), key=errores.get))
+                    #-- El concurso es entre las tres hipótesis; el Pathfinder no diagnostica.
             with case.subTest(estructura=estructura):
                 case.assertGreaterEqual(ganadores.count(EQUIVALENTE[estructura]), 2)
 

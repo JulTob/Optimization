@@ -12,6 +12,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear, minimize_scalar
 from .dominio import Escala
+from .ruido import umbral_de_mejora, varianza_del_ruido_2d
 from .isotonica import Nudos, ajustar_isotonica, evaluar_nudos
 from .aditivo import (
         Componente, ajustar_componente, direccion, eje, radio, retroajustar, sumar,
@@ -117,9 +118,9 @@ def ajustar_tangentes(X, y, max_direcciones=6, fraccion_validacion=0.25, semilla
     return Modelo2D("Tangentes", escala, componentes)
 
 
-# ---------------------------------------------------------------- Ascenso (pathfinder)
-def ajustar_ascenso(X, y, pasos=None, sensibilidad=0.05, n_barrido=45):
-    """Ascenso de rampas (pathfinder): avanzar y escalar, una rampa por paso.
+# ---------------------------------------------------------------- Pathfinder
+def ajustar_pathfinder(X, y, pasos=None, confianza=0.95, n_barrido=45):
+    """Pathfinder (ascenso de rampas): avanzar y escalar, una rampa por paso.
 
     Desde el origen del dominio normalizado, cada paso hace tres cosas:
 
@@ -134,27 +135,28 @@ def ajustar_ascenso(X, y, pasos=None, sensibilidad=0.05, n_barrido=45):
 
     Cada rampa nueva vale 0 por debajo de la posición desde la que se
     lanzó (componente a componente), así que lo ya recorrido no se toca.
-    Un paso se acepta si quita al menos `sensibilidad` del error que
-    queda: el mismo criterio de parada que rampas por división. `pasos`
-    lo limita (None: sin tope; acaba igual, los nudos son los datos).
+    Un paso se acepta si su mejora supera el UMBRAL DE RUIDO: el error
+    que robaría un grado de libertad ajustado a ruido puro, al nivel de
+    confianza dado (χ²₁(confianza)·σ̂²; ver Rampas.ruido). σ̂² se estima
+    una sola vez, antes de la búsqueda: el mismo criterio de parada que
+    rampas por división. `pasos` lo limita (None: sin tope; acaba
+    igual, porque los nudos son los datos, finitos).
 
     El modelo queda descrito por la base y los tramos (û_k, a_k, b_k)
     con sus pesos: la rampa k vale w_k · r((x·û_k − a_k)/(b_k − a_k)).
-    El camino se recupera con `camino_del_ascenso`.
+    El camino se recupera con `camino_del_pathfinder`.
     """
     y = np.asarray(y, dtype=float)
     if y.ndim != 1 or y.size == 0 or not np.all(np.isfinite(y)):
         raise ValueError("y debe ser un vector finito no vacío.")
     if pasos is not None and (not isinstance(pasos, (int, np.integer)) or pasos < 1):
         raise ValueError("pasos debe ser un entero mayor o igual que 1, o None.")
-    sensibilidad = float(sensibilidad)
-    if not np.isfinite(sensibilidad) or sensibilidad <= 0:
-        raise ValueError("sensibilidad debe ser positiva.")
 
     escala = Escala.de_los_datos(X)
     Z = escala(X)
     if len(Z) != len(y):
         raise ValueError("X e y deben tener el mismo número de datos.")
+    umbral = umbral_de_mejora(varianza_del_ruido_2d(Z, y), confianza)
 
     posicion = np.zeros(2)
     tramos = []         #-- (ángulo, inicio, fin) de cada rampa aceptada, en orden.
@@ -166,36 +168,38 @@ def ajustar_ascenso(X, y, pasos=None, sensibilidad=0.05, n_barrido=45):
         if error_actual <= 0:
             break
             #-- Ajuste ya exacto: no hay nada que mejorar.
-        residuo = y - _evaluar_ascenso(Z, base, tramos, pesos)
+        residuo = y - _evaluar_pathfinder(Z, base, tramos, pesos)
         paso = _paso_mas_cercano(
-                Z, residuo, posicion, error_actual, sensibilidad, n_barrido,
+                Z, residuo, posicion, error_actual, umbral, n_barrido,
                 )
         if paso is None:
             break
             #-- Nada sube por delante de la posición: fin del camino.
         angulo = paso[0]
         candidatos = tramos + [paso]
-        base_nueva, pesos_nuevos = _pesos_del_ascenso(Z, y, candidatos)
+        base_nueva, pesos_nuevos = _pesos_del_pathfinder(Z, y, candidatos)
         error_nuevo = float(np.sum(
-                (y - _evaluar_ascenso(Z, base_nueva, candidatos, pesos_nuevos)) ** 2
+                (y - _evaluar_pathfinder(Z, base_nueva, candidatos, pesos_nuevos)) ** 2
                 ))
-        if (error_actual - error_nuevo) / error_actual <= sensibilidad:
+        if error_actual - error_nuevo <= umbral:
             break
-            #-- Punto estable: el paso no quita una fracción perceptible del error.
+            #-- La mejora no supera lo que robaría el ruido: punto estable.
         tramos, base, pesos, error_actual = (
                 candidatos, base_nueva, pesos_nuevos, error_nuevo
                 )
         posicion = posicion + (paso[2] - float(posicion @ _rumbo(angulo))) * _rumbo(angulo)
         #-- La posición salta al punto de saturación de la rampa nueva.
 
-    return Modelo2D("Ascenso", escala, _componentes_del_ascenso(base, tramos, pesos))
+    return Modelo2D("Pathfinder", escala, _componentes_del_pathfinder(base, tramos, pesos))
 
 
-def camino_del_ascenso(modelo):
-    """Los puntos del camino (llanos y subidas), en el dominio normalizado.
+def camino_del_pathfinder(modelo):
+    """Los puntos del camino del Pathfinder (llanos y subidas), en el
+    dominio normalizado.
 
     El camino es en sí mismo un diagnóstico visual: recto en datos
-    direccionales, en escalera (tramos a 0° y 90°) en datos aditivos.
+    direccionales, por la diagonal en radiales, en escalera (tramos a
+    0° y 90°) en aditivos.
     """
     posicion = np.zeros(2)
     puntos = [posicion.copy()]
@@ -219,15 +223,15 @@ def _rumbo(angulo):
     return np.array([np.cos(angulo), np.sin(angulo)])
 
 
-def _paso_mas_cercano(Z, residuo, posicion, error_actual, sensibilidad, n_barrido):
+def _paso_mas_cercano(Z, residuo, posicion, error_actual, umbral, n_barrido):
     """El paso MÍNIMO aceptable: avanzar poco y reevaluar, como en el
     ascenso por gradiente.
 
     La dirección es la de mejor crecimiento isotónico del residuo (el
     isotónico ve toda la estructura, no solo lo que hace una rampa).
     El tramo arranca donde el isotónico de los datos de delante empieza
-    a subir, y acaba en el candidato MÁS CERCANO cuya rampa ya quita la
-    fracción `sensibilidad` del error. El paso glotón (el mejor tramo
+    a subir, y acaba en el candidato MÁS CERCANO cuya rampa ya supera
+    el umbral de ruido. El paso glotón (el mejor tramo
     posible) saltaría lejos y dejaría atrás, irrecuperable, lo no
     explicado; el paso mínimo deja que el camino se adapte.
     """
@@ -251,9 +255,9 @@ def _paso_mas_cercano(Z, residuo, posicion, error_actual, sensibilidad, n_barrid
         error = float(np.sum((residuo - peso * rampa) ** 2))
         if error < mejor_error:
             mejor_fin, mejor_error = float(fin), error
-        if (error_actual - error) / error_actual > sensibilidad:
+        if error_actual - error > umbral:
             return (float(angulo), inicio, float(fin))
-            #-- Primer candidato que ya es perceptible: paso mínimo.
+            #-- Primer candidato que ya supera al ruido: paso mínimo.
     if mejor_fin is None:
         return None
     return (float(angulo), inicio, mejor_fin)
@@ -266,7 +270,7 @@ def _rampa_del_tramo(Z, tramo):
     return np.clip((Z @ _rumbo(angulo) - inicio) / (fin - inicio), 0.0, 1.0)
 
 
-def _pesos_del_ascenso(Z, y, tramos):
+def _pesos_del_pathfinder(Z, y, tramos):
     """Reajuste conjunto: base libre y un peso ≥ 0 por rampa."""
     diseno = np.column_stack(
             [np.ones(len(Z))] + [_rampa_del_tramo(Z, tramo) for tramo in tramos]
@@ -283,14 +287,14 @@ def _pesos_del_ascenso(Z, y, tramos):
     return float(resultado.x[0]), resultado.x[1:]
 
 
-def _evaluar_ascenso(Z, base, tramos, pesos):
+def _evaluar_pathfinder(Z, base, tramos, pesos):
     total = np.full(len(Z), base)
     for tramo, peso in zip(tramos, pesos):
         total = total + peso * _rampa_del_tramo(Z, tramo)
     return total
 
 
-def _componentes_del_ascenso(base, tramos, pesos):
+def _componentes_del_pathfinder(base, tramos, pesos):
     """Cada paso es una Componente de dos nudos; la base va en el primero."""
     if not tramos:
         return [Componente(eje(0), Nudos(np.zeros(1), np.array([base])))]

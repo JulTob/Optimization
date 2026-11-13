@@ -3,6 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear
 from .senales import matriz_de_rampas
+from .ruido import umbral_de_mejora, varianza_del_ruido_1d
 
 
 @dataclass(frozen=True)
@@ -118,16 +119,17 @@ def rampas_regularizadas(x, y, n_anchuras=4, penalizacion=1e-3):
     return ajustar_pesos(x, y, inicios, anchos, penalizacion)
 
 
-def rampas_por_division(x, y, profundidad=None, sensibilidad=0.05):
-    """Divide el dominio recursivamente hasta que partir deje de mejorar.
+def rampas_por_division(x, y, profundidad=None, confianza=0.95):
+    """Divide el dominio recursivamente hasta que partir no supere al ruido.
 
     Se empieza con una sola rampa, de min(x) a max(x). En cada intervalo
-    se busca el nudo interior que más reduce el error; si la mejora
-    relativa (sobre el error que queda) supera `sensibilidad` —por
-    defecto el 5%, por encima de lo que roba un corte que solo persigue
-    ruido—, el corte
-    se acepta y la búsqueda se repite dentro de [izquierda, corte] y de
-    [corte, derecha]. El número de rampas EMERGE de la búsqueda.
+    se busca el nudo interior que más reduce el error, y el corte se
+    acepta si su mejora supera el UMBRAL DE RUIDO: el error que robaría
+    un grado de libertad ajustado a ruido puro, al nivel de confianza
+    dado (χ²₁(confianza)·σ̂²; ver Rampas.ruido). σ̂² se estima una sola
+    vez, antes de la búsqueda. Aceptado el corte, la búsqueda se repite
+    dentro de [izquierda, corte] y de [corte, derecha]: el número de
+    rampas EMERGE de la búsqueda.
 
     `profundidad` limita los niveles de recursión: el nivel k permite
     hasta 2^k − 1 cortes. Con None no hay tope, y la recursión acaba
@@ -140,21 +142,19 @@ def rampas_por_division(x, y, profundidad=None, sensibilidad=0.05):
             not isinstance(profundidad, (int, np.integer)) or profundidad < 1
             ):
         raise ValueError("profundidad debe ser un entero mayor o igual que 1, o None.")
-    sensibilidad = float(sensibilidad)
-    if not np.isfinite(sensibilidad) or sensibilidad <= 0:
-        raise ValueError("sensibilidad debe ser positiva.")
 
     posiciones = np.unique(x)
     if posiciones.size < 2:
         raise ValueError("Hacen falta al menos dos valores de x distintos.")
 
+    umbral = umbral_de_mejora(varianza_del_ruido_1d(x, y), confianza)
     cortes = [float(posiciones[0]), float(posiciones[-1])]
-    _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, sensibilidad)
+    _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, umbral)
     return _ajustar_entre_cortes(x, y, sorted(cortes))
 
 
-def _dividir(x, y, cortes, izquierda, derecha, profundidad, sensibilidad):
-    """Busca un corte dentro de (izquierda, derecha); si compensa, recurre."""
+def _dividir(x, y, cortes, izquierda, derecha, profundidad, umbral):
+    """Busca un corte dentro de (izquierda, derecha); si supera al ruido, recurre."""
     if profundidad is not None and profundidad < 1:
         return
     candidatos = [float(c) for c in np.unique(x) if izquierda < c < derecha]
@@ -171,15 +171,15 @@ def _dividir(x, y, cortes, izquierda, derecha, profundidad, sensibilidad):
         for c in candidatos
     ]
     mejor = int(np.argmin(errores))
-    mejora = (error_actual - errores[mejor]) / error_actual
-    if mejora <= sensibilidad:
+    if error_actual - errores[mejor] <= umbral:
         return
+        #-- La mejora no supera lo que robaría el ruido: punto estable.
 
     corte = candidatos[mejor]
     cortes.append(corte)
     siguiente = None if profundidad is None else profundidad - 1
-    _dividir(x, y, cortes, izquierda, corte, siguiente, sensibilidad)
-    _dividir(x, y, cortes, corte, derecha, siguiente, sensibilidad)
+    _dividir(x, y, cortes, izquierda, corte, siguiente, umbral)
+    _dividir(x, y, cortes, corte, derecha, siguiente, umbral)
 
 
 def _ajustar_entre_cortes(x, y, cortes):
