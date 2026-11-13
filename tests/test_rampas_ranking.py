@@ -13,6 +13,7 @@ from Rampas.referencias import (
 from Rampas.ranking import (
     catalogo_de_rampas,
     muestra_1d,
+    liga_de_victorias,
     ranking_de_modelos,
     tabla_de_victorias,
 )
@@ -127,6 +128,18 @@ class Ranking(unittest.TestCase):
         case.assertTrue((tabla["Mejor"] <= tabla["Peor"]).all())
         case.assertEqual(int(tabla["Victorias"].sum()), 4)
         #-- Una victoria por repetición (sin empates de coma flotante).
+
+    def test_liga_agrega_los_escenarios(case):
+        casos = [(np.sqrt, 1.0, 6.0, 0.1), (np.sqrt, 1.0, 6.0, 0.2)]
+        liga = liga_de_victorias(
+            casos, n=15, n_ajustes=3, n_malla=50,
+            semilla=1, modelos=case.modelos_rapidos(),
+            )
+        case.assertEqual(int(liga["Victorias"].sum()), 6)
+        #-- Una victoria por jornada: 2 escenarios × 3 repeticiones.
+        case.assertTrue(np.all(np.diff(liga["Puesto medio"].to_numpy()) >= 0))
+        with case.assertRaises(ValueError):
+            liga_de_victorias([])
 
     def test_un_modelo_roto_no_puntua(case):
         def siempre_falla(x, y):

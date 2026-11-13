@@ -132,9 +132,49 @@ def tabla_de_victorias(
     senal, _ = _errores_por_repeticion(
             s, bajo, alto, sigma, n, n_ajustes, 2, n_malla, semilla, modelos,
             )
-    puestos = senal.rank(axis=1, method="min")
-    #-- Puesto 1 = menor error de señal en esa repetición; los empates
-    #-- comparten el mejor puesto.
+    return _clasificacion(senal.rank(axis=1, method="min"), modelos)
+
+
+def liga_de_victorias(
+        casos,
+        n=25,
+        n_ajustes=10,
+        n_malla=500,
+        semilla=0,
+        modelos=None,
+        ):
+    """Una sola tabla de victorias para varios escenarios: la liga.
+
+    `casos` es una lista de (señal, bajo, alto, sigma). Cada repetición
+    de cada escenario es una jornada: los modelos se ordenan por error
+    de señal, y la liga junta todas las jornadas. Se usa la MISMA
+    semilla en cada escenario, así que la liga es exactamente la
+    agregación de las tablas de victorias por escenario.
+
+    La liga mide ROBUSTEZ: un modelo brillante en un escenario y
+    hundido en otro queda a media tabla; gana el que no tiene mundo
+    malo.
+    """
+    casos = list(casos)
+    if not casos:
+        raise ValueError("Hace falta al menos un escenario en casos.")
+    if modelos is None:
+        modelos = {**catalogo_de_rampas(), **catalogo_de_referencias()}
+    jornadas = []
+    for s, bajo, alto, sigma in casos:
+        senal, _ = _errores_por_repeticion(
+                s, bajo, alto, sigma, n, n_ajustes, 2, n_malla, semilla, modelos,
+                )
+        jornadas.append(senal.rank(axis=1, method="min"))
+    return _clasificacion(pd.concat(jornadas, ignore_index=True), modelos)
+
+
+def _clasificacion(puestos, modelos):
+    """Agrega una tabla de puestos (jornada × modelo) en la clasificación.
+
+    Puesto 1 = menor error de señal en esa jornada; los empates
+    comparten el mejor puesto, y un ajuste fallido no puntúa.
+    """
     filas = []
     for nombre in modelos:
         filas.append({
