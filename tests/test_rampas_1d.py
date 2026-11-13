@@ -137,7 +137,7 @@ class FamiliasTests(unittest.TestCase):
         textos = [t.get_text() for eje in figura.axes for t in eje.texts]
         case.assertEqual(len(textos), 6)
         for texto in textos:
-            case.assertIn(r"\hat{y}", texto)
+            case.assertIn("s(x)", texto)
             case.assertLess(len(texto), 120)
             #-- Si una f-string se come las llaves, aquí aparecerían los datos.
 

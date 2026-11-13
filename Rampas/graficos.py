@@ -72,12 +72,12 @@ def dibujar_diagnostico(diagnostico, X, y, verdad=None, resolucion=80):
 def _escribir_errores(eje, x, y, curva, malla, verdad):
     """Errores medios en la esquina inferior derecha.
 
-    ⟨|y − ŷ|²⟩     media sobre los datos y (entrenamiento);
-    ⟨|f(x) − ŷ|²⟩  media frente al generador f, en todo el rango (si se conoce).
+    ⟨|y − f(x)|²⟩     media sobre los datos y (entrenamiento);
+    ⟨|f(x) − s(x)|²⟩  media frente a la señal generadora s, en todo el rango (si se conoce).
     """
-    lineas = [rf"$\langle |y-\hat{{y}}|^2 \rangle$ = {np.mean((y - curva(x)) ** 2):.4f}"]
+    lineas = [rf"$\langle |y-f(x)|^2 \rangle$ = {np.mean((y - curva(x)) ** 2):.4f}"]
     if verdad is not None:
-        lineas.append(rf"$\langle |f(x)-\hat{{y}}|^2 \rangle$ = {np.mean((verdad(malla) - curva(malla)) ** 2):.4f}")
+        lineas.append(rf"$\langle |f(x)-s(x)|^2 \rangle$ = {np.mean((verdad(malla) - curva(malla)) ** 2):.4f}")
     eje.text(
             0.97, 0.04, "\n".join(lineas),
             transform=eje.transAxes, ha="right", va="bottom", fontsize=9,
@@ -125,8 +125,8 @@ def dibujar_familias(x, y, verdad=None, titulo=""):
     for eje, (nombre, curva) in zip(ejes.ravel(), familias.items()):
         eje.scatter(x, y, color="black", s=14, zorder=3, label="$y$ (datos)")
         if verdad is not None:
-            eje.plot(malla, verdad(malla), "--", color="gray", label="$f(x)$ (generador)")
-        eje.plot(malla, curva(malla), color="tab:red", lw=2, label=r"$\hat{y}$ (ajuste)")
+            eje.plot(malla, verdad(malla), "--", color="gray", label="$s(x)$ (señal)")
+        eje.plot(malla, curva(malla), color="tab:red", lw=2, label="$f(x)$ (ajuste)")
         eje.set_title(nombre)
         _escribir_errores(eje, x, y, curva, malla, verdad)
     for eje in ejes.ravel()[len(familias):]:
