@@ -69,6 +69,18 @@ def dibujar_diagnostico(diagnostico, X, y, verdad=None, resolucion=80):
     return figura
 
 
+def _escribir_errores(eje, x, y, curva, malla, verdad):
+    """ECM de entrenamiento y, si se conoce, ECM frente a la verdad, en la esquina inferior derecha."""
+    lineas = [f"ECM entrenamiento: {np.mean((y - curva(x)) ** 2):.4f}"]
+    if verdad is not None:
+        lineas.append(f"ECM frente a la verdad: {np.mean((verdad(malla) - curva(malla)) ** 2):.4f}")
+    eje.text(
+            0.97, 0.04, "\n".join(lineas),
+            transform=eje.transAxes, ha="right", va="bottom", fontsize=8,
+            bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "lightgray"},
+            )
+
+
 def _titulo(nombre, diagnostico):
     if nombre not in diagnostico.errores:
         return "Verdad (función original)"
@@ -112,6 +124,7 @@ def dibujar_familias(x, y, verdad=None, titulo=""):
             eje.plot(malla, verdad(malla), "--", color="gray", label="verdad")
         eje.plot(malla, curva(malla), color="tab:red", lw=2, label="ajuste")
         eje.set_title(nombre)
+        _escribir_errores(eje, x, y, curva, malla, verdad)
     for eje in ejes.ravel()[len(familias):]:
         eje.set_visible(False)
     ejes[0, 0].legend(loc="upper left")
