@@ -128,6 +128,19 @@ class FamiliasTests(unittest.TestCase):
         elegido = rampas_por_division(x, y)
         case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
 
+    def test_figura_de_familias_con_errores_legibles(case):
+        import matplotlib
+        matplotlib.use("Agg")
+        from Rampas.graficos import dibujar_familias
+        x, y = muestra()
+        figura = dibujar_familias(x, y, verdad=np.sqrt)
+        textos = [t.get_text() for eje in figura.axes for t in eje.texts]
+        case.assertEqual(len(textos), 6)
+        for texto in textos:
+            case.assertIn(r"\hat{y}", texto)
+            case.assertLess(len(texto), 120)
+            #-- Si una f-string se come las llaves, aquí aparecerían los datos.
+
     def test_catalogo_regularizado_sin_rampas_repetidas(case):
         ajuste = rampas_regularizadas(*muestra())
         pares = set(zip(np.round(ajuste.inicios, 12), np.round(ajuste.anchos, 12)))
