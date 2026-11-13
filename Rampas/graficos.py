@@ -220,3 +220,29 @@ def dibujar_redes(muestras, resolucion=200):
             if fila == len(muestras) - 1:
                 eje.set_xlabel("x")
     return figura
+
+
+def dibujar_datos_2d(muestras, resolucion=120):
+    """Los datos de cada estructura sobre la señal que los genera.
+
+    `muestras` es un diccionario nombre → (X, z, verdad). Cada panel
+    dibuja las curvas de nivel de la señal s(x, y) y los datos en su
+    posición, coloreados por su valor observado z con la misma escala:
+    la diferencia de color entre un punto y el fondo es el ruido.
+    """
+    lado = np.linspace(0, 1, resolucion)
+    A, B = np.meshgrid(lado, lado)
+    puntos = np.column_stack([A.ravel(), B.ravel()])
+    figura, ejes = plt.subplots(1, len(muestras), figsize=(4 * len(muestras), 3.8), sharey=True)
+    for eje, (nombre, (X, z, verdad)) in zip(np.atleast_1d(ejes), muestras.items()):
+        senal = verdad(puntos).reshape(A.shape)
+        minimo = min(float(senal.min()), float(np.min(z)))
+        maximo = max(float(senal.max()), float(np.max(z)))
+        niveles = np.linspace(minimo, maximo, 13)
+        relleno = eje.contourf(A, B, senal, levels=niveles)
+        eje.scatter(X[:, 0], X[:, 1], c=z, vmin=minimo, vmax=maximo,
+                    s=40, edgecolors="white", linewidths=0.8)
+        eje.set(title=f"{nombre} (n = {len(z)})", xlabel="x", xlim=(0, 1), ylim=(0, 1))
+        figura.colorbar(relleno, ax=eje, label="s, z")
+    np.atleast_1d(ejes)[0].set_ylabel("y")
+    return figura
