@@ -121,9 +121,9 @@ class FamiliasTests(unittest.TestCase):
         error_isotonica = np.sum((y - evaluar_nudos(nudos, x)) ** 2)
 
         #-- Más profundidad nunca empeora el entrenamiento, y nunca baja de la isotónica.
-        #-- Con banda muy negativa todo residuo "tiene color" y la división llega lo más lejos posible.
+        #-- Con umbral 0 toda mejora compensa y la división llega lo más lejos posible.
         errores = [
-            np.sum((y - rampas_por_division(x, y, profundidad=k, banda=-10.0)(x)) ** 2)
+            np.sum((y - rampas_por_division(x, y, profundidad=k, umbral=0.0)(x)) ** 2)
             for k in (1, 2, 4)
         ]
         case.assertTrue(all(a >= b - 1e-9 for a, b in zip(errores, errores[1:])))
@@ -131,7 +131,7 @@ class FamiliasTests(unittest.TestCase):
 
         #-- Profundidad k: como mucho 2^k − 1 cortes, o sea 2^k rampas.
         for k in (1, 2, 4):
-            ajuste = rampas_por_division(x, y, profundidad=k, banda=-10.0)
+            ajuste = rampas_por_division(x, y, profundidad=k, umbral=0.0)
             case.assertTrue(1 <= len(ajuste.pesos) <= 2 ** k)
 
         #-- Las rampas son contiguas: cada una empieza donde acaba la anterior.
@@ -142,13 +142,14 @@ class FamiliasTests(unittest.TestCase):
         elegido = rampas_por_division(x, y)
         case.assertTrue(1 <= len(elegido.pesos) < len(nudos.posiciones))
 
-        #-- Una banda más ancha declara blanco antes: nunca salen más rampas.
-        exigente = rampas_por_division(x, y, banda=10.0)
+        #-- Un umbral más exigente nunca saca más rampas.
+        exigente = rampas_por_division(x, y, umbral=10.0)
         case.assertTrue(len(exigente.pesos) <= len(elegido.pesos))
+        case.assertEqual(len(rampas_por_division(x, y, umbral=10.0).pesos), 1)
 
-        #-- La banda debe ser finita.
+        #-- El umbral debe ser finito y no negativo.
         with case.assertRaises(ValueError):
-            rampas_por_division(x, y, banda=float("inf"))
+            rampas_por_division(x, y, umbral=-0.1)
 
         #-- Determinista: dos llamadas idénticas, mismo resultado.
         np.testing.assert_array_equal(

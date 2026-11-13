@@ -57,7 +57,7 @@ class DiagnosticoTests(unittest.TestCase):
         with case.assertRaises(ValueError):
             ajustar_pathfinder(X, y, pasos=0)
         with case.assertRaises(ValueError):
-            ajustar_pathfinder(X, y, banda=float("nan"))
+            ajustar_pathfinder(X, y, umbral=-0.1)
         with case.assertRaises(ValueError):
             ajustar_pathfinder(X, y[:-1])
 

@@ -3,7 +3,6 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.optimize import lsq_linear
 from .senales import matriz_de_rampas
-from .ruido import es_blanco
 
 
 @dataclass(frozen=True)
@@ -119,21 +118,28 @@ def rampas_regularizadas(x, y, n_anchuras=4, penalizacion=1e-3):
     return ajustar_pesos(x, y, inicios, anchos, penalizacion)
 
 
-def rampas_por_division(x, y, profundidad=None, banda=2.0):
-    """Divide el dominio recursivamente hasta que el residuo sea blanco.
+def rampas_por_division(x, y, profundidad=None, umbral=None):
+    """Divide el dominio recursivamente hasta que partir deje de compensar.
 
-    Se empieza con una sola rampa, de min(x) a max(x). Un intervalo se
-    parte (por el nudo que más reduce el error) mientras su residuo
-    tenga estructura: mientras la autocorrelación a retardo 1 de sus
-    residuos, en orden, supere la banda de blancura banda/√n del propio
-    intervalo (Rampas.ruido). Cuando el residuo de un intervalo es
-    blanco, ahí ya solo queda ruido y no se parte más: el número de
-    rampas EMERGE de la búsqueda, sin umbrales de mejora ni supuestos
-    sobre la distribución del ruido.
+    Se empieza con una sola rampa, de min(x) a max(x). En cada intervalo
+    se busca el nudo interior que más reduce el error, y el corte se
+    acepta si su mejora relativa (sobre el error total que queda) supera
+    el umbral ε. Aceptado, la búsqueda se repite dentro de
+    [izquierda, corte] y de [corte, derecha]: el número de rampas EMERGE.
+
+    `umbral` es el ε de parada, SEPARADO de la búsqueda: con None se usa
+    el estándar por longitud de descripción (AIC), ε = 2·Δp/n = 4/n,
+    porque cada corte añade Δp = 2 parámetros (posición y peso). Es
+    forma cerrada, sale solo de n, y coincide con lo que roba de verdad
+    el ruido (medido en Rampas.ruido, que ofrece alternativas: blancura
+    del residuo y calibración por remuestreo; se comparan en §4).
+    Cualquier aplicación puede relajarlo o endurecerlo pasando su
+    propio número.
 
     `profundidad` limita los niveles de recursión: el nivel k permite
     hasta 2^k − 1 cortes. Con None no hay tope, y la recursión acaba
-    igualmente: los candidatos son los datos, finitos.
+    igualmente: los candidatos son los datos, finitos, y las mejoras se
+    agotan porque el error nunca baja del de la isotónica (§2.3).
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -141,42 +147,49 @@ def rampas_por_division(x, y, profundidad=None, banda=2.0):
             not isinstance(profundidad, (int, np.integer)) or profundidad < 1
             ):
         raise ValueError("profundidad debe ser un entero mayor o igual que 1, o None.")
-    banda = float(banda)
-    if not np.isfinite(banda):
-        raise ValueError("banda debe ser finita.")
+    if umbral is None:
+        umbral = 4.0 / len(x)
+        #-- AIC: 2·Δp/n con Δp = 2 (posición del corte y peso).
+    umbral = float(umbral)
+    if not np.isfinite(umbral) or umbral < 0:
+        raise ValueError("umbral debe ser finito y no negativo.")
 
     posiciones = np.unique(x)
     if posiciones.size < 2:
         raise ValueError("Hacen falta al menos dos valores de x distintos.")
 
     cortes = [float(posiciones[0]), float(posiciones[-1])]
-    _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, banda)
+    _dividir(x, y, cortes, cortes[0], cortes[1], profundidad, umbral)
     return _ajustar_entre_cortes(x, y, sorted(cortes))
 
 
-def _dividir(x, y, cortes, izquierda, derecha, profundidad, banda):
-    """Parte (izquierda, derecha) mientras su residuo tenga color."""
+def _dividir(x, y, cortes, izquierda, derecha, profundidad, umbral):
+    """Busca un corte dentro de (izquierda, derecha); si compensa, recurre."""
     if profundidad is not None and profundidad < 1:
         return
-    dentro = (izquierda <= x) & (x <= derecha)
-    orden = np.argsort(x[dentro])
-    residuo = y - _ajustar_entre_cortes(x, y, sorted(cortes))(x)
-    if es_blanco(residuo[dentro][orden], banda):
-        return
-        #-- El residuo del intervalo es blanco: ahí ya solo queda ruido.
-
     candidatos = [float(c) for c in np.unique(x) if izquierda < c < derecha]
     if not candidatos:
         return
+
+    error_actual = _error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes)))
+    if error_actual <= 0:
+        return
+        #-- Ajuste ya exacto: no hay nada que mejorar.
+
     errores = [
         _error(x, y, _ajustar_entre_cortes(x, y, sorted(cortes + [c])))
         for c in candidatos
     ]
-    corte = candidatos[int(np.argmin(errores))]
+    mejor = int(np.argmin(errores))
+    if (error_actual - errores[mejor]) / error_actual <= umbral:
+        return
+        #-- La mejora no paga su coste de descripción: punto estable.
+
+    corte = candidatos[mejor]
     cortes.append(corte)
     siguiente = None if profundidad is None else profundidad - 1
-    _dividir(x, y, cortes, izquierda, corte, siguiente, banda)
-    _dividir(x, y, cortes, corte, derecha, siguiente, banda)
+    _dividir(x, y, cortes, izquierda, corte, siguiente, umbral)
+    _dividir(x, y, cortes, corte, derecha, siguiente, umbral)
 
 
 def _ajustar_entre_cortes(x, y, cortes):
