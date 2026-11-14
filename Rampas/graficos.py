@@ -286,7 +286,7 @@ def dibujar_superficies(X, z, verdad=None, resolucion=40, vista=(30, -60)):
     return figura
 
 
-MODELOS_3D = ("Señal", "Zigurat", "Diana", "Tangentes", "Pathfinder")
+MODELOS_3D = ("Señal", "Zigurat", "Diana", "Tangentes", "Pathfinder", "Camino por división")
 
 
 def especificacion_3d(muestras, resolucion=40):
@@ -300,6 +300,7 @@ def especificacion_3d(muestras, resolucion=40):
     ángulo. Separar la especificación del dibujo permite comprobarla sin
     Plotly; `figura_3d_interactiva` la convierte en figura.
     """
+    from .caminos import ajustar_camino_por_division
     from .modelos_2d import (
             ajustar_diana, ajustar_pathfinder, ajustar_tangentes, ajustar_zigurat,
             )
@@ -308,6 +309,7 @@ def especificacion_3d(muestras, resolucion=40):
         "Diana": ajustar_diana,
         "Tangentes": ajustar_tangentes,
         "Pathfinder": ajustar_pathfinder,
+        "Camino por división": ajustar_camino_por_division,
         }
     lado = np.linspace(0, 1, resolucion)
     A, B = np.meshgrid(lado, lado)
