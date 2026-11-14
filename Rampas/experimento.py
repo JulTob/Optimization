@@ -10,6 +10,7 @@ from .estructuras import ESTRUCTURAS, muestra_2d
 from .modelos_2d import (
         ajustar_diana, ajustar_pathfinder, ajustar_tangentes, ajustar_zigurat,
         )
+from .caminos import ajustar_camino_por_division
 
 MODELOS = {
     "Zigurat": ajustar_zigurat,
@@ -19,6 +20,7 @@ MODELOS = {
 EQUIVALENTE = {"aditiva": "Zigurat", "radial": "Diana", "direccional": "Tangentes"}
 EXPLORADORES = {
     "Pathfinder": ajustar_pathfinder,
+    "Camino por división": ajustar_camino_por_division,
     }
 #-- Los MODELOS son hipótesis sobre la estructura: el diagnóstico elige
 #-- entre ellos. El Pathfinder explora el plano con la visión de

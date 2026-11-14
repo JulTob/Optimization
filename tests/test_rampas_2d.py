@@ -110,16 +110,36 @@ class DiagnosticoTests(unittest.TestCase):
     def test_ranking_2d(case):
         from Rampas.experimento import ranking_2d
         tabla = ranking_2d(repeticiones=2, n=30, n_prueba=200)
-        case.assertEqual(len(tabla), 12)
-        #-- Cuatro modelos (tres hipótesis y el Pathfinder) por tres estructuras.
+        case.assertEqual(len(tabla), 15)
+        #-- Cinco modelos (tres hipótesis y dos exploradores) por tres estructuras.
         case.assertIn("Tangentes · radial", tabla.index)
         case.assertTrue(np.all(np.diff(tabla["Señal (media)"].to_numpy()) >= 0))
         from Rampas.experimento import separar_por_estructura
         partes = separar_por_estructura(tabla)
         case.assertEqual(set(partes), set(ESTRUCTURAS))
         for parte in partes.values():
-            case.assertEqual(set(parte.index), {"Zigurat", "Diana", "Tangentes", "Pathfinder"})
+            case.assertEqual(
+                set(parte.index),
+                {"Zigurat", "Diana", "Tangentes", "Pathfinder", "Camino por división"},
+                )
             case.assertTrue(np.all(np.diff(parte["Señal (media)"].to_numpy()) >= 0))
+
+    def test_camino_por_division(case):
+        from Rampas.caminos import ajustar_camino_por_division, puntos_del_camino
+        X, z = muestra_2d(ESTRUCTURAS["direccional"], 50, 0.1, 0)
+        modelo = ajustar_camino_por_division(X, z)
+        puntos = puntos_del_camino(modelo)
+        np.testing.assert_allclose(puntos[0], [0.0, 0.0])
+        np.testing.assert_allclose(puntos[-1], [1.0, 1.0])
+        #-- La suma de los segmentos sigue siendo la diagonal del dominio.
+        case.assertGreaterEqual(np.diff(puntos, axis=0).min(), -1e-12)
+        #-- Todos los segmentos en el cono positivo: el modelo es monótono.
+        case.assertTrue(any(abs(a - 30) <= 8 for a in modelo.angulos_grados()))
+        rejilla = np.random.default_rng(1).uniform(0, 1, (400, 2))
+        mas_x = rejilla + np.array([0.05, 0.0])
+        case.assertTrue(np.all(modelo.predecir(mas_x) >= modelo.predecir(rejilla) - 1e-9))
+        with case.assertRaises(ValueError):
+            ajustar_camino_por_division(X, z, umbral=-1.0)
 
     def test_tangentes_recupera_la_direccion(case):
         X, y = muestra_2d(ESTRUCTURAS["direccional"], 150, 0.1, 0)
